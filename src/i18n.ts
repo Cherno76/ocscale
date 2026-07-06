@@ -119,7 +119,7 @@ const ZH: Dict = {
   loading: "加载中…",
   failedToLoad: "加载失败：",
   noTokens: "无 Token",
-  tokensLabel: (n: string) => `${n} 个 Token`,
+  tokensLabel: (n: string) => `${n} Tokens`,
   noCalls: "无调用",
 };
 
