@@ -128,14 +128,13 @@ fn query_events() -> Result<Vec<RawEvent>, rusqlite::Error> {
     let conn = Connection::open(&path)?;
 
     // Read every assistant message that has token data, ordered by time.
-    // Join through session → project to get the project worktree path.
-    // Extract the basename for a clean display name.
+    // Use session.directory as the project name (basename of the CWD).
+    // project_id/workspace_id is unreliable — most sessions fall under "global".
     let mut stmt = conn.prepare(
         "SELECT m.id, m.session_id, m.data,
-                COALESCE(p.worktree, '/') as project_path
+                COALESCE(s.directory, '/') as session_dir
          FROM message m
          JOIN session s ON s.id = m.session_id
-         LEFT JOIN project p ON p.id = s.project_id
          WHERE json_extract(m.data, '$.role') = 'assistant'
            AND json_extract(m.data, '$.tokens.input') > 0
          ORDER BY json_extract(m.data, '$.time.created') ASC",
@@ -146,16 +145,16 @@ fn query_events() -> Result<Vec<RawEvent>, rusqlite::Error> {
             let id: String = row.get(0)?;
             let session_id: String = row.get(1)?;
             let data: String = row.get(2)?;
-            let project_path: String = row.get(3)?;
+            let session_dir: String = row.get(3)?;
             // Extract basename: "/Users/cherno/MyProject" → "MyProject", "/" → "global"
-            let project = if project_path == "/" {
+            let project = if session_dir == "/" || session_dir.is_empty() {
                 "global".to_string()
             } else {
-                project_path
+                session_dir
                     .rsplit('/')
                     .next()
                     .filter(|s| !s.is_empty())
-                    .unwrap_or("?")
+                    .unwrap_or("global")
                     .to_string()
             };
             Ok((id, session_id, project, data))
