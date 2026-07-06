@@ -6,7 +6,7 @@ export type Dict = typeof EN;
 
 const EN = {
   // Header
-  appName: "Tokenscope",
+  appName: "OCScale",
   // Periods
   day: "Day",
   week: "Week",
@@ -72,7 +72,7 @@ const EN = {
 };
 
 const ZH: Dict = {
-  appName: "Tokenscope",
+  appName: "OCScale",
   day: "日",
   week: "周",
   month: "月",

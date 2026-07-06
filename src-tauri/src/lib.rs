@@ -44,7 +44,7 @@ fn refresh(app: &tauri::AppHandle) {
         // surface the same number through the hover tooltip instead, the only
         // text channel Shell_NotifyIcon exposes for a tray icon.
         let _ = tray.set_title(Some(label.clone()));
-        let _ = tray.set_tooltip(Some(format!("Tokenscope · today {}", label)));
+        let _ = tray.set_tooltip(Some(format!("OCScale · today {}", label)));
     }
     check_milestones(app, &dash);
     let _ = app.emit("dashboard-updated", &dash);
@@ -252,7 +252,7 @@ fn show_celebration(app: &tauri::AppHandle) {
                 "confetti",
                 tauri::WebviewUrl::App("confetti.html".into()),
             )
-            .title("Tokenscope Celebration")
+            .title("OCScale Celebration")
             .inner_size(size.width as f64, size.height as f64)
             .decorations(false)
             .transparent(true)
@@ -637,7 +637,7 @@ async fn get_dashboard(app: tauri::AppHandle) -> Dashboard {
         let _ = tray.set_title(Some(label.clone()));
         // Mirror refresh(): keep the tooltip in sync for Windows, where the
         // title isn't shown next to the icon.
-        let _ = tray.set_tooltip(Some(format!("Tokenscope · today {}", label)));
+        let _ = tray.set_tooltip(Some(format!("OCScale · today {}", label)));
     }
     check_milestones(&app, &dash);
     dash
@@ -659,7 +659,7 @@ fn save_screenshot(data_url: String) -> Result<String, String> {
 
     let dir = dirs::desktop_dir()
         .ok_or_else(|| "could not resolve the Desktop directory".to_string())?;
-    let stamp = chrono::Local::now().format("Tokenscope %Y-%m-%d at %H.%M.%S.png");
+    let stamp = chrono::Local::now().format("OCScale %Y-%m-%d at %H.%M.%S.png");
     let path = dir.join(stamp.to_string());
 
     std::fs::write(&path, &bytes).map_err(|e| format!("failed to write file: {e}"))?;
@@ -873,7 +873,7 @@ pub fn run() {
                 .icon(tauri::include_image!("icons/tray-icon.png"))
                 .icon_as_template(false)
                 .title(&label)
-                .tooltip(format!("Tokenscope · today {}", label))
+                .tooltip(format!("OCScale · today {}", label))
                 .on_tray_icon_event(move |tray, event| {
                     let app = tray.app_handle();
                     // Cache tray icon rect for panel positioning below the icon.

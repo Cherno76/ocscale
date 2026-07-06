@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Tokenscope",
+  "productName": "OCScale",
   "version": "1.0.3",
   "identifier": "com.tokenscope.app",
   "build": {
