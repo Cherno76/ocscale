@@ -13,7 +13,7 @@
     "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "Tokenscope",
+        "title": "OC-Tokenscope",
         "width": 400,
         "height": 660,
         "resizable": false,

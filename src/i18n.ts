@@ -6,7 +6,7 @@ export type Dict = typeof EN;
 
 const EN = {
   // Header
-  appName: "Tokenscope",
+  appName: "OC-Tokenscope",
   // Periods
   day: "Day",
   week: "Week",
