@@ -44,7 +44,7 @@ fn refresh(app: &tauri::AppHandle) {
         // surface the same number through the hover tooltip instead, the only
         // text channel Shell_NotifyIcon exposes for a tray icon.
         let _ = tray.set_title(Some(label.clone()));
-        let _ = tray.set_tooltip(Some(format!("OC-Tokenscope · today {}", label)));
+        let _ = tray.set_tooltip(Some(format!("Tokenscope · today {}", label)));
     }
     check_milestones(app, &dash);
     let _ = app.emit("dashboard-updated", &dash);
@@ -637,7 +637,7 @@ async fn get_dashboard(app: tauri::AppHandle) -> Dashboard {
         let _ = tray.set_title(Some(label.clone()));
         // Mirror refresh(): keep the tooltip in sync for Windows, where the
         // title isn't shown next to the icon.
-        let _ = tray.set_tooltip(Some(format!("OC-Tokenscope · today {}", label)));
+        let _ = tray.set_tooltip(Some(format!("Tokenscope · today {}", label)));
     }
     check_milestones(&app, &dash);
     dash
@@ -873,7 +873,7 @@ pub fn run() {
                 .icon(tauri::include_image!("icons/tray-icon.png"))
                 .icon_as_template(false)
                 .title(&label)
-                .tooltip(format!("OC-Tokenscope · today {}", label))
+                .tooltip(format!("Tokenscope · today {}", label))
                 .on_tray_icon_event(move |tray, event| {
                     let app = tray.app_handle();
                     // Cache tray icon rect for panel positioning below the icon.
