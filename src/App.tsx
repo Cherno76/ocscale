@@ -203,8 +203,8 @@ function ScreenshotButton({ theme, busy, onClick, td }: { theme: Theme; busy: bo
   );
 }
 
-function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, toggleLang }:
-  { dash: Dashboard; dark: boolean; themePref: "dark" | "light" | "system"; onToggleTheme: () => void; openGen: number; active: boolean; lang: Lang; toggleLang: () => void }) {
+function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, toggleLang, onRefresh }:
+  { dash: Dashboard; dark: boolean; themePref: "dark" | "light" | "system"; onToggleTheme: () => void; openGen: number; active: boolean; lang: Lang; toggleLang: () => void; onRefresh: () => void }) {
   const t = TH[dark ? "dark" : "light"];
   const { t: tr } = useT();
   const periodItems = [tr.day, tr.week, tr.month];
@@ -215,6 +215,27 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
   const canDrag = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window && !navigator.userAgent.includes("Macintosh");
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const [period, setPeriod] = useState<"Day" | "Week" | "Month">("Week");
+  const [refreshing, setRefreshing] = useState(false);
+  const [autostartOn, setAutostartOn] = useState(false);
+  useEffect(() => {
+    // Read initial autostart state from the Rust backend.
+    if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+      import("@tauri-apps/api/core").then(({ invoke }) =>
+        invoke<boolean>("get_autostart").then(setAutostartOn).catch(() => {})
+      );
+    }
+  }, []);
+  const handleRefresh = () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    onRefresh();
+    setTimeout(() => setRefreshing(false), 1200);
+  };
+  const handleAutostart = async () => {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const next = await invoke<boolean>("set_autostart", { on: !autostartOn }).catch(() => null);
+    if (next !== null) setAutostartOn(next);
+  };
   const P: PeriodReport = period === "Day" ? dash.day : period === "Month" ? dash.month : dash.week;
   const M = P.metrics;
   // animated Total tokens: counts up from 0 on each open / period switch;
@@ -429,6 +450,27 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
         <SectionRule t={t} />
         <div style={{ marginBottom: 9 }}><Label t={t}>{tr.dailyActivity}</Label></div>
         <Heatmap days={dash.heatmap} theme={t} accent={t.accent} td={tr} />
+        {/* refresh & autostart */}
+        <SectionRule t={t} m="14px 0 10px" />
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={handleRefresh} disabled={refreshing} style={{
+            flex: 1, padding: "7px 0", borderRadius: 7, cursor: refreshing ? "default" : "pointer",
+            font: `600 11px ${t.ui}`, border: `1px solid ${t.segBorder}`,
+            background: refreshing ? t.segBg : t.segOnBg, color: refreshing ? t.segOffText : t.segOnText,
+            boxShadow: refreshing ? "none" : t.segOnShadow,
+          }}>
+            {refreshing ? "↻" : "↻"} {tr.refresh}
+          </button>
+          <button onClick={handleAutostart} style={{
+            flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer",
+            font: `600 11px ${t.ui}`, border: `1px solid ${t.segBorder}`,
+            background: autostartOn ? t.segOnBg : t.segBg,
+            color: autostartOn ? t.segOnText : t.segOffText,
+            boxShadow: autostartOn ? t.segOnShadow : "none",
+          }}>
+            {autostartOn ? "✓ " : ""}{tr.launchAtLogin}
+          </button>
+        </div>
         {/* footer note */}
         <div style={{ marginTop: 12, font: `500 8.5px ${t.mono}`, color: t.faint, textAlign: "center" }}>
           {tr.estimateNote}
@@ -465,6 +507,7 @@ export default function App() {
   const tr = DICT[curLang];
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const applyDash = (d: Dashboard) => { setDash(d); setErr(null); };
   const [openGen, setOpenGen] = useState(0);
   const [focused, setFocused] = useState(true); // browser preview: always "focused"
   // Theme preference: explicit Dark / Light, or System (follows the OS
@@ -497,15 +540,8 @@ export default function App() {
     });
 
   useEffect(() => {
-    // Apply fresh data AND clear any stale error: a transient initial-load
-    // failure must not pin the error page for the whole session — the next
-    // successful fetch (focus refetch or the 30s background push) recovers it.
-    const apply = (d: Dashboard) => {
-      setDash(d);
-      setErr(null);
-    };
     // initial load (shows the Loading state only until the first data arrives)
-    fetchDashboard().then(apply).catch((e) => setErr(String(e)));
+    fetchDashboard().then(applyDash).catch((e) => setErr(String(e)));
 
     const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
     if (!inTauri) return;
@@ -520,7 +556,7 @@ export default function App() {
     };
     // live updates pushed from the background refresh thread — swaps the data in
     // place (no Loading), so values update without any flicker.
-    listen<Dashboard>("dashboard-updated", (e) => apply(e.payload)).then(track);
+    listen<Dashboard>("dashboard-updated", (e) => applyDash(e.payload)).then(track);
     // System appearance pushed natively from Rust (macOS). The webview's
     // prefers-color-scheme is unreliable for our hidden, non-activating menu-bar
     // panel, so the native event is the source of truth for System mode there;
@@ -533,7 +569,7 @@ export default function App() {
         setFocused(focused);
         if (focused) {
           setOpenGen((g) => g + 1); // re-run the count-up on each open
-          fetchDashboard().then(apply).catch(() => {});
+          fetchDashboard().then(applyDash).catch(() => {});
         }
       })
       .then(track);
@@ -583,7 +619,8 @@ export default function App() {
               font: `500 12px ${t.mono}`, color: t.dim }}>{tr.loading}</div>
           </div>
         : <Panel dash={dash} dark={dark} themePref={themePref} onToggleTheme={cycleTheme}
-            openGen={openGen} active={focused} lang={curLang} toggleLang={toggleLang} />}
+            openGen={openGen} active={focused} lang={curLang} toggleLang={toggleLang}
+            onRefresh={() => fetchDashboard().then(applyDash)} />}
     </I18nContext.Provider>
   );
 }

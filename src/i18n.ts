@@ -61,6 +61,9 @@ const EN = {
   // Loading / error
   loading: "Loading…",
   failedToLoad: "Failed to load:",
+  // Footer
+  refresh: "Refresh",
+  launchAtLogin: "Launch at Login",
   // Tooltips
   noTokens: "No tokens",
   tokensLabel: (n: string) => `${n} tokens`,
@@ -99,6 +102,8 @@ const ZH: Dict = {
   less: "少",
   more: "多",
   estimateNote: "费用估算来自 models.dev / LiteLLM · 仅供参考",
+  refresh: "刷新",
+  launchAtLogin: "开机启动",
   dark: "深色",
   light: "浅色",
   system: "系统",

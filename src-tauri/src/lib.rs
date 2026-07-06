@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{
-    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
+    menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager,
 };
@@ -667,6 +667,26 @@ pub fn dashboard_json() -> String {
     serde_json::to_string_pretty(&parser::build_dashboard()).unwrap_or_default()
 }
 
+// ── Autostart commands (called from the frontend panel) ─────────────
+
+#[tauri::command]
+async fn get_autostart(app: tauri::AppHandle) -> Result<bool, String> {
+    app.autolaunch().is_enabled().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn set_autostart(app: tauri::AppHandle, on: bool) -> Result<bool, String> {
+    let mgr = app.autolaunch();
+    if on {
+        mgr.enable().map_err(|e| e.to_string())?;
+    } else {
+        mgr.disable().map_err(|e| e.to_string())?;
+    }
+    let now_on = mgr.is_enabled().map_err(|e| e.to_string())?;
+    save_autostart_pref(now_on);
+    Ok(now_on)
+}
+
 fn fmt_tokens_m(m: f64) -> String {
     if m >= 1.0 {
         format!("{:.2}M", m)
@@ -708,7 +728,7 @@ pub fn run() {
     }
 
     builder
-        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag])
+        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag, get_autostart, set_autostart])
         .setup(move |app| {
             // Menu-bar–only app: no Dock icon, runs in the background.
             #[cfg(target_os = "macos")]
@@ -839,30 +859,8 @@ pub fn run() {
             let dash = parser::build_dashboard();
             let label = fmt_tokens_m(dash.today_tokens);
 
-            let open_i = MenuItem::with_id(app, "open", "Open Tokenscope", true, None::<&str>)?;
-            let refresh_i = MenuItem::with_id(app, "refresh", "Refresh", true, None::<&str>)?;
-            // Launch-at-login toggle (a checkbox item). Seeded from the reconciled
-            // preference; clicking it flips the OS registration and persists.
-            let autostart_i = CheckMenuItem::with_id(
-                app,
-                "autostart",
-                "Launch at Login",
-                true,
-                autostart_on,
-                None::<&str>,
-            )?;
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(
-                app,
-                &[
-                    &open_i,
-                    &refresh_i,
-                    &PredefinedMenuItem::separator(app)?,
-                    &autostart_i,
-                    &PredefinedMenuItem::separator(app)?,
-                    &quit_i,
-                ],
-            )?;
+            let menu = Menu::with_items(app, &[&quit_i])?;
 
             let lh_tray = last_hidden.clone();
             let _tray = TrayIconBuilder::with_id("main")
@@ -924,21 +922,10 @@ pub fn run() {
                         }
                     }
                 })
-                .on_menu_event(move |app, event| match event.id.as_ref() {
-                    "open" => show_popover(app),
-                    "refresh" => refresh(app),
-                    "autostart" => {
-                        // Flip the OS registration, re-read the real state, mirror
-                        // it into the checkbox, and persist the user's choice.
-                        let mgr = app.autolaunch();
-                        let enabled = mgr.is_enabled().unwrap_or(false);
-                        let _ = if enabled { mgr.disable() } else { mgr.enable() };
-                        let now_on = mgr.is_enabled().unwrap_or(!enabled);
-                        let _ = autostart_i.set_checked(now_on);
-                        save_autostart_pref(now_on);
+                .on_menu_event(move |app, event| {
+                    if event.id.as_ref() == "quit" {
+                        app.exit(0);
                     }
-                    "quit" => app.exit(0),
-                    _ => {}
                 })
                 .build(app)?;
 
