@@ -44,8 +44,6 @@ const EN = {
   dailyActivity: "Daily activity",
   less: "Less",
   more: "More",
-  // Footer
-  estimateNote: "Est. cost via models.dev / LiteLLM · estimate",
   // Theme
   dark: "Dark",
   light: "Light",
@@ -104,7 +102,6 @@ const ZH: Dict = {
   dailyActivity: "每日活动",
   less: "少",
   more: "多",
-  estimateNote: "费用估算来自 models.dev / LiteLLM · 仅供参考",
   currencySymbol: "¥",
   exchangeRate: 7.2,
   refresh: "刷新",

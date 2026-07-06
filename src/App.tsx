@@ -482,10 +482,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
             {tr.quit}
           </button>
         </div>
-        {/* footer note */}
-        <div style={{ marginTop: 12, font: `500 8.5px ${t.mono}`, color: t.faint, textAlign: "center" }}>
-          {tr.estimateNote}
-        </div>
+
         </div>{/* /scrolling body */}
       </div>
       {toast && (
