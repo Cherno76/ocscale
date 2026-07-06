@@ -204,7 +204,7 @@ impl Agg {
         // Slash-command skill events carry no model (empty) — they're not LLM
         // requests, so they must not inflate request counts or the model split.
         if !e.model.is_empty() {
-            self.requests += e.msg_count.max(1); // count actual messages per session
+            self.requests += 1; // each RawEvent is one assistant message
             // model totals keep all token types so shares sum to Total tokens
             *self.model_tok.entry(e.model.clone()).or_default() += e.input + e.cache + e.output;
             *self.model_cost.entry(e.model.clone()).or_default() += e.cost;

@@ -1,11 +1,9 @@
 // Incremental event store reading from OpenCode's SQLite database.
 //
-// Replaces the original JSONL-watcher for ~/.claude/projects with a direct
-// SQLite query against OpenCode's session table. The RawEvent struct stays
-// identical so parser.rs, pricing.rs and the entire frontend work unchanged.
-//
-// OpenCode already stores per-session token and cost data, so we just poll
-// the DB every 30s — no filesystem watcher, no incremental ingest, no cache.
+// Reads individual assistant messages from the `message` table, each with its
+// own timestamp and token counts. This gives accurate hourly distribution in
+// the daily chart, unlike per-session aggregates which lump all tokens into
+// one time bucket.
 use rusqlite::Connection;
 use std::path::PathBuf;
 
@@ -13,20 +11,19 @@ use std::path::PathBuf;
 pub struct RawEvent {
     pub ts_ms: i64,
     pub session: String,
-    pub model: String, // normalized model id (e.g. "deepseek-v4-flash")
+    pub model: String,
     pub in_tok: f64,
     pub cc: f64,  // cache creation (tokens_cache_write)
     pub cr: f64,  // cache read (tokens_cache_read)
     pub out_tok: f64,
-    pub mcp: Vec<String>,    // (not yet populated — future: event table)
-    pub skills: Vec<String>, // (not yet populated — future: event table)
-    pub id: String,          // session id (also used as dedup key)
+    pub mcp: Vec<String>,    // (not yet populated)
+    pub skills: Vec<String>, // (not yet populated)
+    pub id: String,          // message id
     pub source: String,      // always "opencode"
-    /// Number of messages in this session. Used to count requests instead of
-    /// treating each session as a single request.
+    /// Always 1 for per-message events (each message = 1 request).
     pub msg_count: u64,
-    /// Cost pre-calculated by OpenCode. Falls back when the pricing module
-    /// doesn't recognise the model (e.g. custom DeepSeek variants).
+    /// Per-message cost from OpenCode. Falls back when pricing module
+    /// doesn't recognise the model.
     pub stored_cost: Option<f64>,
 }
 
@@ -34,24 +31,20 @@ pub struct Store {
     pub events: Vec<RawEvent>,
 }
 
-/// Locate the OpenCode SQLite database. Tries the XDG-style path first
-/// (Linux/portable), then the macOS Application Support path.
+/// Locate the OpenCode SQLite database.
 fn opencode_db_path() -> Option<PathBuf> {
-    // XDG data home (Linux, or macOS when configured by OpenCode)
     if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
         let p = PathBuf::from(xdg).join("opencode/opencode.db");
         if p.exists() {
             return Some(p);
         }
     }
-    // Default XDG: ~/.local/share/opencode/opencode.db (macOS too)
     if let Some(home) = dirs::home_dir() {
         let p = home.join(".local/share/opencode/opencode.db");
         if p.exists() {
             return Some(p);
         }
     }
-    // macOS fallback: ~/Library/Application Support/opencode/opencode.db
     if let Some(d) = dirs::data_dir() {
         let p = d.join("opencode/opencode.db");
         if p.exists() {
@@ -61,81 +54,106 @@ fn opencode_db_path() -> Option<PathBuf> {
     None
 }
 
-/// Parse the `model` JSON column from the session table. It's a JSON object
-/// like `{"id":"deepseek-v4-flash","providerID":"deepseek","variant":"low"}`.
-/// Returns just the `id` field, or the raw string if parsing fails.
-fn parse_model(raw: &str) -> String {
-    serde_json::from_str::<serde_json::Value>(raw)
-        .ok()
-        .and_then(|v| v.get("id").and_then(|id| id.as_str().map(String::from)))
-        .unwrap_or_else(|| raw.to_string())
+/// Parse an assistant message JSON `data` column into a RawEvent.
+fn parse_message(id: String, session_id: String, data: &str) -> Option<RawEvent> {
+    let v: serde_json::Value = serde_json::from_str(data).ok()?;
+
+    // Only assistant messages carry token counts.
+    if v.get("role")?.as_str()? != "assistant" {
+        return None;
+    }
+
+    let tokens = v.get("tokens")?;
+    let tok_in = tokens.get("input").and_then(|n| n.as_f64()).unwrap_or(0.0);
+    let tok_out = tokens.get("output").and_then(|n| n.as_f64()).unwrap_or(0.0);
+    if tok_in <= 0.0 && tok_out <= 0.0 {
+        return None; // skip empty/errored messages
+    }
+
+    let cache = tokens.get("cache");
+    let cc = cache
+        .and_then(|c| c.get("write"))
+        .and_then(|n| n.as_f64())
+        .unwrap_or(0.0);
+    let cr = cache
+        .and_then(|c| c.get("read"))
+        .and_then(|n| n.as_f64())
+        .unwrap_or(0.0);
+
+    let model = v
+        .get("modelID")
+        .and_then(|m| m.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let cost = v.get("cost").and_then(|c| c.as_f64()).unwrap_or(0.0);
+
+    // Timestamp: use time.created (ms epoch), fall back to time.completed
+    let ts_ms = v
+        .get("time")
+        .and_then(|t| t.get("created"))
+        .and_then(|n| n.as_i64())
+        .or_else(|| {
+            v.get("time")
+                .and_then(|t| t.get("completed"))
+                .and_then(|n| n.as_i64())
+        })
+        .unwrap_or(0);
+
+    Some(RawEvent {
+        ts_ms,
+        session: session_id,
+        model,
+        in_tok: tok_in,
+        cc,
+        cr,
+        out_tok: tok_out,
+        mcp: Vec::new(),
+        skills: Vec::new(),
+        id,
+        source: "opencode".to_string(),
+        msg_count: 1,
+        stored_cost: if cost > 0.0 { Some(cost) } else { None },
+    })
 }
 
 fn query_events() -> Result<Vec<RawEvent>, rusqlite::Error> {
     let path = opencode_db_path().ok_or_else(|| {
-        rusqlite::Error::InvalidPath(
-            PathBuf::from(
-                "OpenCode database not found — have you launched OpenCode yet?",
-            ),
-        )
+        rusqlite::Error::InvalidPath(PathBuf::from(
+            "OpenCode database not found",
+        ))
     })?;
     let conn = Connection::open(&path)?;
 
-    // Build a version-independent query: some schema versions had cost/token
-    // columns added later, but they should all be present in current DBs.
+    // Read every assistant message that has token data, ordered by time.
     let mut stmt = conn.prepare(
-        "SELECT s.id, s.time_updated, s.model,
-                s.tokens_input, s.tokens_output,
-                s.tokens_cache_read, s.tokens_cache_write,
-                s.cost,
-                (SELECT count(*) FROM message m WHERE m.session_id = s.id) AS msg_count
-         FROM session s
-         WHERE (s.tokens_input > 0 OR s.tokens_output > 0)
-           AND s.model IS NOT NULL AND s.model != ''
-         ORDER BY s.time_updated ASC",
+        "SELECT m.id, m.session_id, m.data
+         FROM message m
+         WHERE json_extract(m.data, '$.role') = 'assistant'
+           AND json_extract(m.data, '$.tokens.input') > 0
+         ORDER BY json_extract(m.data, '$.time.created') ASC",
     )?;
 
-    let events = stmt.query_map([], |row| {
-        let id: String = row.get(0)?;
-        let ts_ms: i64 = row.get(1)?;
-        let model_raw: String = row.get(2)?;
-        let tok_in: i64 = row.get(3)?;
-        let tok_out: i64 = row.get(4)?;
-        let cache_read: i64 = row.get(5)?;
-        let cache_write: i64 = row.get(6)?;
-        let cost: f64 = row.get(7)?;
-        let msg_count: i64 = row.get(8)?;
+    let events: Vec<RawEvent> = stmt
+        .query_map([], |row| {
+            let id: String = row.get(0)?;
+            let session_id: String = row.get(1)?;
+            let data: String = row.get(2)?;
+            Ok((id, session_id, data))
+        })?
+        .filter_map(|r| r.ok())
+        .filter_map(|(id, session_id, data)| parse_message(id, session_id, &data))
+        .collect();
 
-        Ok(RawEvent {
-            ts_ms,
-            session: id.clone(),
-            model: parse_model(&model_raw),
-            in_tok: tok_in as f64,
-            cc: cache_write as f64,
-            cr: cache_read as f64,
-            out_tok: tok_out as f64,
-            mcp: Vec::new(),
-            skills: Vec::new(),
-            id,
-            source: "opencode".to_string(),
-            msg_count: msg_count.max(0) as u64,
-            stored_cost: if cost > 0.0 { Some(cost) } else { None },
-        })
-    })?;
-
-    events.collect()
+    Ok(events)
 }
 
 impl Store {
-    /// Full reload from the OpenCode database. This is the only public
-    /// load path — no incremental manifest, no disk cache.
     pub fn load() -> Self {
         let events = query_events().unwrap_or_default();
         Store { events }
     }
 
-    /// Re-query the database and return true if events changed (so the
-    /// caller knows to re-aggregate). Cheap enough to call every 30s.
     pub fn ingest(&mut self) -> bool {
         let fresh = query_events().unwrap_or_default();
         if fresh == self.events {
@@ -145,13 +163,11 @@ impl Store {
         true
     }
 
-    /// Drop events older than `cutoff_ms` to bound the aggregation window.
     pub fn prune_before(&mut self, cutoff_ms: i64) -> bool {
         let before = self.events.len();
         self.events.retain(|e| e.ts_ms >= cutoff_ms);
         self.events.len() != before
     }
 
-    /// No-op: the DB is always current, no cache to persist.
     pub fn save(&self) {}
 }
