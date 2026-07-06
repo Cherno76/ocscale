@@ -22,6 +22,9 @@ pub struct RawEvent {
     pub skills: Vec<String>, // (not yet populated — future: event table)
     pub id: String,          // session id (also used as dedup key)
     pub source: String,      // always "opencode"
+    /// Number of messages in this session. Used to count requests instead of
+    /// treating each session as a single request.
+    pub msg_count: u64,
     /// Cost pre-calculated by OpenCode. Falls back when the pricing module
     /// doesn't recognise the model (e.g. custom DeepSeek variants).
     pub stored_cost: Option<f64>,
@@ -81,14 +84,15 @@ fn query_events() -> Result<Vec<RawEvent>, rusqlite::Error> {
     // Build a version-independent query: some schema versions had cost/token
     // columns added later, but they should all be present in current DBs.
     let mut stmt = conn.prepare(
-        "SELECT id, time_updated, model,
-                tokens_input, tokens_output,
-                tokens_cache_read, tokens_cache_write,
-                cost
-         FROM session
-         WHERE (tokens_input > 0 OR tokens_output > 0)
-           AND model IS NOT NULL AND model != ''
-         ORDER BY time_updated ASC",
+        "SELECT s.id, s.time_updated, s.model,
+                s.tokens_input, s.tokens_output,
+                s.tokens_cache_read, s.tokens_cache_write,
+                s.cost,
+                (SELECT count(*) FROM message m WHERE m.session_id = s.id) AS msg_count
+         FROM session s
+         WHERE (s.tokens_input > 0 OR s.tokens_output > 0)
+           AND s.model IS NOT NULL AND s.model != ''
+         ORDER BY s.time_updated ASC",
     )?;
 
     let events = stmt.query_map([], |row| {
@@ -100,6 +104,7 @@ fn query_events() -> Result<Vec<RawEvent>, rusqlite::Error> {
         let cache_read: i64 = row.get(5)?;
         let cache_write: i64 = row.get(6)?;
         let cost: f64 = row.get(7)?;
+        let msg_count: i64 = row.get(8)?;
 
         Ok(RawEvent {
             ts_ms,
@@ -113,6 +118,7 @@ fn query_events() -> Result<Vec<RawEvent>, rusqlite::Error> {
             skills: Vec::new(),
             id,
             source: "opencode".to_string(),
+            msg_count: msg_count.max(0) as u64,
             stored_cost: if cost > 0.0 { Some(cost) } else { None },
         })
     })?;

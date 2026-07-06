@@ -27,6 +27,7 @@ struct Event {
     priced: bool, // whether a price was found for this model
     mcp: Vec<String>,   // user-installed server names called in this msg
     skills: Vec<String>, // user-installed skill names called in this msg
+    msg_count: u64,      // messages in this session (for request counting)
 }
 
 // Top-5 models keep the green/slate scheme; everything beyond is uniform gray.
@@ -169,6 +170,7 @@ fn compute_event(r: &RawEvent, cfg: &UserConfig, pricing: &Pricing) -> Event {
         priced: cost_opt.is_some(),
         mcp,
         skills,
+        msg_count: r.msg_count,
     }
 }
 
@@ -202,7 +204,7 @@ impl Agg {
         // Slash-command skill events carry no model (empty) — they're not LLM
         // requests, so they must not inflate request counts or the model split.
         if !e.model.is_empty() {
-            self.requests += 1;
+            self.requests += e.msg_count.max(1); // count actual messages per session
             // model totals keep all token types so shares sum to Total tokens
             *self.model_tok.entry(e.model.clone()).or_default() += e.input + e.cache + e.output;
             *self.model_cost.entry(e.model.clone()).or_default() += e.cost;
