@@ -128,10 +128,11 @@ fn query_events() -> Result<Vec<RawEvent>, rusqlite::Error> {
     let conn = Connection::open(&path)?;
 
     // Read every assistant message that has token data, ordered by time.
-    // Match each message against known projects: find the project whose
-    // worktree is the longest prefix of the message's CWD (or session dir).
-    // This handles the monorepo case where the agent works from the root but
-    // files belong to a sub-project (e.g. CWD=TUI-Project → project=tokenscope).
+    // Match each message against known projects by checking if the CWD is
+    // inside (or equal to) a project's worktree. For monorepo root messages
+    // that don't match any specific project, the CWD basename is used as the
+    // project name (e.g. "TUI-Project"). Those are genuinely root-level
+    // messages — switching to Month view will show deeper project breakdown.
     let mut stmt = conn.prepare(
         "SELECT m.id, m.session_id, m.data,
                 COALESCE(
