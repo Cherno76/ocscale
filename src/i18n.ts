@@ -17,7 +17,7 @@ const EN = {
   // Cache split
   cached: "Cached",
   new_: "New",
-  pctCached: "% cached",
+  pctCached: "% cache hit",
   // Model section
   tokensByModel: "Tokens by model",
   noUsageInThisPeriod: "No usage in this period",
@@ -80,7 +80,7 @@ const ZH: Dict = {
   estCost: "预估费用",
   cached: "缓存",
   new_: "新增",
-  pctCached: "% 已缓存",
+  pctCached: "% 命中缓存",
   tokensByModel: "按模型统计 Token",
   noUsageInThisPeriod: "该时段无使用记录",
   costByModel: "按模型统计费用",
