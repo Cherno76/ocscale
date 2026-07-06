@@ -9,8 +9,7 @@ use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{
-    menu::{Menu, MenuItem},
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    tray::{MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager,
 };
 #[cfg(not(target_os = "macos"))]
@@ -859,38 +858,20 @@ pub fn run() {
             let dash = parser::build_dashboard();
             let label = fmt_tokens_m(dash.today_tokens);
 
-            let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&quit_i])?;
-
             let lh_tray = last_hidden.clone();
             let _tray = TrayIconBuilder::with_id("main")
                 .icon(tauri::include_image!("icons/tray-icon.png"))
                 .icon_as_template(false)
                 .title(&label)
                 .tooltip(format!("Tokenscope · today {}", label))
-                .menu(&menu)
-                .show_menu_on_left_click(false) // left = toggle panel, right = menu
                 .on_tray_icon_event(move |tray, event| {
                     let app = tray.app_handle();
-                    tauri_plugin_positioner::on_tray_event(app, &event);
-                    // Cache the tray-icon rect (physical px) for panel positioning.
-                    // macOS aligns the panel under the menu-bar icon; Windows/Linux
-                    // uses it to pick the monitor and pins the popover to that
-                    // monitor's top-right — see position_panel / position_popover_windows.
-                    if let TrayIconEvent::Click { rect, .. } = &event {
-                        if let Some(anchor) = app.try_state::<TrayAnchor>() {
-                            let p = rect.position.to_physical::<f64>(1.0);
-                            let s = rect.size.to_physical::<f64>(1.0);
-                            *anchor.0.lock().unwrap() = Some((p.x, p.y, s.width, s.height));
-                        }
-                    }
+                    // Any click toggles the panel — no menu.
                     if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
                         ..
                     } = event
                     {
-                        // if it was just hidden by the blur from this same click, leave it closed
                         let just_hidden = now_ms() - lh_tray.load(Ordering::Relaxed) < 250;
                         #[cfg(target_os = "macos")]
                         {
@@ -920,11 +901,6 @@ pub fn run() {
                                 show_popover(app);
                             }
                         }
-                    }
-                })
-                .on_menu_event(move |app, event| {
-                    if event.id.as_ref() == "quit" {
-                        app.exit(0);
                     }
                 })
                 .build(app)?;
