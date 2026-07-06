@@ -64,6 +64,7 @@ const EN = {
   // Footer
   refresh: "Refresh",
   launchAtLogin: "Launch at Login",
+  quit: "Quit",
   // Tooltips
   noTokens: "No tokens",
   tokensLabel: (n: string) => `${n} tokens`,
@@ -104,6 +105,7 @@ const ZH: Dict = {
   estimateNote: "费用估算来自 models.dev / LiteLLM · 仅供参考",
   refresh: "刷新",
   launchAtLogin: "开机启动",
+  quit: "退出",
   dark: "深色",
   light: "浅色",
   system: "系统",

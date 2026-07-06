@@ -236,6 +236,9 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
     const next = await invoke<boolean>("set_autostart", { on: !autostartOn }).catch(() => null);
     if (next !== null) setAutostartOn(next);
   };
+  const handleQuit = () => {
+    import("@tauri-apps/api/core").then(({ invoke }) => invoke("quit_app"));
+  };
   const P: PeriodReport = period === "Day" ? dash.day : period === "Month" ? dash.month : dash.week;
   const M = P.metrics;
   // animated Total tokens: counts up from 0 on each open / period switch;
@@ -450,7 +453,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
         <SectionRule t={t} />
         <div style={{ marginBottom: 9 }}><Label t={t}>{tr.dailyActivity}</Label></div>
         <Heatmap days={dash.heatmap} theme={t} accent={t.accent} td={tr} />
-        {/* refresh & autostart */}
+        {/* refresh, autostart, quit */}
         <SectionRule t={t} m="14px 0 10px" />
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={handleRefresh} disabled={refreshing} style={{
@@ -459,7 +462,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
             background: refreshing ? t.segBg : t.segOnBg, color: refreshing ? t.segOffText : t.segOnText,
             boxShadow: refreshing ? "none" : t.segOnShadow,
           }}>
-            {refreshing ? "↻" : "↻"} {tr.refresh}
+            ⟳ {tr.refresh}
           </button>
           <button onClick={handleAutostart} style={{
             flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer",
@@ -469,6 +472,13 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
             boxShadow: autostartOn ? t.segOnShadow : "none",
           }}>
             {autostartOn ? "✓ " : ""}{tr.launchAtLogin}
+          </button>
+          <button onClick={handleQuit} style={{
+            flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer",
+            font: `600 11px ${t.ui}`, border: `1px solid ${t.segBorder}`,
+            background: t.segBg, color: t.segOffText,
+          }}>
+            {tr.quit}
           </button>
         </div>
         {/* footer note */}

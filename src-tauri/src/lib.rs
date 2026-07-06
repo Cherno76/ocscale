@@ -369,8 +369,7 @@ fn begin_drag(_window: tauri::Window) -> Result<(), String> {
     Ok(())
 }
 
-/// Centre the panel on the primary monitor. Ignores the tray anchor — the user
-/// requested a centred popover rather than a tray-anchored one.
+/// Anchor the panel under the tray icon, flush with the menu-bar bottom.
 #[cfg(target_os = "macos")]
 fn position_panel(app: &tauri::AppHandle) {
     let Some(w) = app.get_webview_window("main") else {
@@ -380,17 +379,23 @@ fn position_panel(app: &tauri::AppHandle) {
         return;
     };
     let win_w = size.width as f64;
-    let win_h = size.height as f64;
 
+    if let Some(state) = app.try_state::<TrayAnchor>() {
+        if let Some((tx, ty, tw, th)) = *state.0.lock().unwrap() {
+            let x = tx + tw / 2.0 - win_w / 2.0;
+            let y = ty + th;
+            let _ = w.set_position(tauri::PhysicalPosition::new(x as i32, y as i32));
+            return;
+        }
+    }
+
+    // Fallback: centre near the top of the current monitor.
     if let Ok(Some(monitor)) = w.current_monitor() {
         let mp = monitor.position();
         let ms = monitor.size();
         let x = mp.x as f64 + (ms.width as f64 - win_w) / 2.0;
-        let y = mp.y as f64 + (ms.height as f64 - win_h) / 2.0;
-        let _ = w.set_position(tauri::PhysicalPosition::new(
-            x.max(0.0) as i32,
-            y.max(0.0) as i32,
-        ));
+        let y = mp.y as f64 + 24.0 * monitor.scale_factor();
+        let _ = w.set_position(tauri::PhysicalPosition::new(x as i32, y as i32));
     }
 }
 
@@ -674,6 +679,11 @@ async fn get_autostart(app: tauri::AppHandle) -> Result<bool, String> {
 }
 
 #[tauri::command]
+async fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
+#[tauri::command]
 async fn set_autostart(app: tauri::AppHandle, on: bool) -> Result<bool, String> {
     let mgr = app.autolaunch();
     if on {
@@ -727,7 +737,7 @@ pub fn run() {
     }
 
     builder
-        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag, get_autostart, set_autostart])
+        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag, get_autostart, set_autostart, quit_app])
         .setup(move |app| {
             // Menu-bar–only app: no Dock icon, runs in the background.
             #[cfg(target_os = "macos")]
@@ -866,6 +876,14 @@ pub fn run() {
                 .tooltip(format!("Tokenscope · today {}", label))
                 .on_tray_icon_event(move |tray, event| {
                     let app = tray.app_handle();
+                    // Cache tray icon rect for panel positioning below the icon.
+                    if let TrayIconEvent::Click { rect, .. } = &event {
+                        if let Some(anchor) = app.try_state::<TrayAnchor>() {
+                            let p = rect.position.to_physical::<f64>(1.0);
+                            let s = rect.size.to_physical::<f64>(1.0);
+                            *anchor.0.lock().unwrap() = Some((p.x, p.y, s.width, s.height));
+                        }
+                    }
                     // Any click toggles the panel — no menu.
                     if let TrayIconEvent::Click {
                         button_state: MouseButtonState::Up,
