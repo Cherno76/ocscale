@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the Tokenscope app icon: a black rounded tile with a green
+"""Generate the Tokenscope app icon: a black rounded tile with a blue
 bar-chart glyph, on a FULLY TRANSPARENT background (rounded corners are
 transparent, not white). Renders at 4x and downsamples for clean anti-aliasing.
 
@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw
 
 S = 4                      # supersample factor
 N = 1024 * S               # working canvas
-GREEN = (39, 176, 110, 255)
+BLUE = (59, 130, 246, 255) # blue-500 #3b82f6
 TILE = (24, 27, 30, 255)   # near-black tile
 
 img = Image.new("RGBA", (N, N), (0, 0, 0, 0))
@@ -23,7 +23,7 @@ t0, t1 = margin, N - margin
 tile_r = int(0.225 * (t1 - t0))
 d.rounded_rectangle([t0, t0, t1, t1], radius=tile_r, fill=TILE)
 
-# --- green chart frame (rounded-square outline) ---
+# --- blue chart frame (rounded-square outline) ---
 side = (t1 - t0)
 bx = int((side) * 0.27)            # inset of frame from tile edge
 fx0, fy0 = t0 + bx, t0 + bx
@@ -31,7 +31,7 @@ fx1, fy1 = t1 - bx, t1 - bx
 stroke = int((fx1 - fx0) * 0.135)
 frame_r = int((fx1 - fx0) * 0.26)
 d.rounded_rectangle([fx0, fy0, fx1, fy1], radius=frame_r,
-                    outline=GREEN, width=stroke)
+                    outline=BLUE, width=stroke)
 
 # --- 3 ascending bars inside the frame ---
 pad = int((fx1 - fx0) * 0.26)      # inner padding from frame
@@ -48,7 +48,7 @@ for i, hf in enumerate(heights):
     x1 = x0 + bar_w
     y1 = iy1
     y0 = iy1 - inner_h * hf
-    d.rounded_rectangle([x0, y0, x1, y1], radius=bar_r, fill=GREEN)
+    d.rounded_rectangle([x0, y0, x1, y1], radius=bar_r, fill=BLUE)
 
 # downsample to 1024 with high-quality resampling
 out = img.resize((1024, 1024), Image.LANCZOS)
