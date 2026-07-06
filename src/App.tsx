@@ -382,7 +382,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
           </div>
           <div style={{ textAlign: "right" }}>
             <div style={{ font: `500 10px ${t.ui}`, color: t.dim }}>{tr.estCost}</div>
-            <div style={{ font: `600 18px ${t.mono}`, color: t.accent, marginTop: 2 }}>{tr.currencySymbol}{M.cost.toFixed(2)}</div>
+            <div style={{ font: `600 18px ${t.mono}`, color: t.accent, marginTop: 2 }}>{tr.currencySymbol}{(M.cost * tr.exchangeRate).toFixed(2)}</div>
           </div>
         </div>
         {/* cached vs rest (uncached input + output) — 2-colour pill. Dark segment
@@ -405,7 +405,8 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
         {/* cost donut */}
         <div style={{ marginBottom: 8 }}><Label t={t}>{tr.costByModel}</Label></div>
         {costModels.length > 0
-          ? <CostDonut models={costModels} theme={t} size={100} thickness={15} currencySymbol={tr.currencySymbol} />
+          ? <CostDonut models={costModels} theme={t} size={100} thickness={15}
+              currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} />
           : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>}
         {unpricedModels.length > 0 && (
           <div style={{ marginTop: 9, font: `500 9.5px/1.5 ${t.mono}`, color: t.faint }}>
@@ -419,7 +420,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
           <MiniStat label={tr.requests} value={fmtInt(M.requests)} sub={`${M.sessions} ${tr.sessions}`} theme={t}>
             <Sparkline values={P.reqTrend.length ? P.reqTrend : [0, 0]} theme={t} width={52} height={20} accent={t.accent} />
           </MiniStat>
-          <MiniStat label={tr.costTrend} value={`${tr.currencySymbol}${M.cost.toFixed(2)}`} sub={trendSub} theme={t} accent={t.accent}>
+          <MiniStat label={tr.costTrend} value={`${tr.currencySymbol}${(M.cost * tr.exchangeRate).toFixed(2)}`} sub={trendSub} theme={t} accent={t.accent}>
             <Sparkline values={P.costTrend.length ? P.costTrend : [0, 0]} theme={t} width={52} height={20} accent={t.accent} />
           </MiniStat>
         </div>

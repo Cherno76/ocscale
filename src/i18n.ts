@@ -62,6 +62,7 @@ const EN = {
   loading: "Loading…",
   failedToLoad: "Failed to load:",
   currencySymbol: "$",
+  exchangeRate: 1,
   // Footer
   refresh: "Refresh",
   launchAtLogin: "Launch at Login",
@@ -105,6 +106,7 @@ const ZH: Dict = {
   more: "多",
   estimateNote: "费用估算来自 models.dev / LiteLLM · 仅供参考",
   currencySymbol: "¥",
+  exchangeRate: 7.2,
   refresh: "刷新",
   launchAtLogin: "开机启动",
   quit: "退出",

@@ -39,7 +39,8 @@ export const fmtTokens = (m: number) => {
 };
 export const fmtInt = (n: number) => n.toLocaleString("en-US");
 export const pct = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 100) : 0);
-export function fmtMoney(v: number, sym = "$") {
+export function fmtMoney(v: number, sym = "$", rate = 1) {
+  v *= rate;
   if (v >= 100000) return sym + Math.round(v / 1000) + "K";
   if (v >= 10000) return sym + (v / 1000).toFixed(1) + "K";
   return sym + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
