@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tokenscope</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      /* Mouse-driven menu-bar popover: WKWebView draws an accent focus ring on
+         whatever control gets focus when the panel opens (e.g. the theme
+         toggle). It's noise here, so suppress focus rings app-wide. */
+      *:focus,
+      *:focus-visible {
+        outline: none !important;
+      }
+      /* Spinner shown on the screenshot button while a capture is in flight. */
+      @keyframes om-spin {
+        to { transform: rotate(360deg); }
+      }
+      .om-spin {
+        animation: om-spin 0.7s linear infinite;
+        transform-origin: 50% 50%;
+      }
+      /* Screenshot save/fail toast — fades in at the top of the panel. */
+      @keyframes om-toast-in {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      .om-toast {
+        animation: om-toast-in 0.18s ease-out;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
