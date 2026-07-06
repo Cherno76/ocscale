@@ -128,11 +128,10 @@ fn query_events() -> Result<Vec<RawEvent>, rusqlite::Error> {
     let conn = Connection::open(&path)?;
 
     // Read every assistant message that has token data, ordered by time.
-    // Use session.directory as the project name (basename of the CWD).
-    // project_id/workspace_id is unreliable — most sessions fall under "global".
+    // Use the per-message path.cwd (most granular), fall back to session.directory.
     let mut stmt = conn.prepare(
         "SELECT m.id, m.session_id, m.data,
-                COALESCE(s.directory, '/') as session_dir
+                COALESCE(json_extract(m.data, '$.path.cwd'), s.directory, '/') as project_dir
          FROM message m
          JOIN session s ON s.id = m.session_id
          WHERE json_extract(m.data, '$.role') = 'assistant'
@@ -145,18 +144,14 @@ fn query_events() -> Result<Vec<RawEvent>, rusqlite::Error> {
             let id: String = row.get(0)?;
             let session_id: String = row.get(1)?;
             let data: String = row.get(2)?;
-            let session_dir: String = row.get(3)?;
-            // Extract basename: "/Users/cherno/MyProject" → "MyProject", "/" → "global"
-            let project = if session_dir == "/" || session_dir.is_empty() {
-                "global".to_string()
-            } else {
-                session_dir
-                    .rsplit('/')
-                    .next()
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or("global")
-                    .to_string()
-            };
+            let project_dir: String = row.get(3)?;
+            // Extract basename: "/Users/cherno/TUI-Project/DS-mon" → "DS-mon"
+            let project = project_dir
+                .rsplit('/')
+                .next()
+                .filter(|s| !s.is_empty())
+                .unwrap_or("global")
+                .to_string();
             Ok((id, session_id, project, data))
         })?
         .filter_map(|r| r.ok())
