@@ -129,8 +129,8 @@ export function Sparkline({ values, theme, width = 80, height = 24, accent, stro
 const DONUT_PALETTE = ["#1f9d63", "#34c27e", "#6ad0a0", "#a7e3c5", "#4b5a52"];
 const DONUT_OVERFLOW = "#79817b";
 
-export function CostDonut({ models, theme, size = 104, thickness = 16 }:
-  { models: ModelStat[]; theme: Theme; size?: number; thickness?: number }) {
+export function CostDonut({ models, theme, size = 104, thickness = 16, currencySymbol = "$" }:
+  { models: ModelStat[]; theme: Theme; size?: number; thickness?: number; currencySymbol?: string }) {
   const t = theme;
   const [hi, setHi] = useState(-1);
   // Rank by cost (desc) and recolor by that rank — usage from most to least.
@@ -161,7 +161,7 @@ export function CostDonut({ models, theme, size = 104, thickness = 16 }:
   });
   const cur = hi >= 0 ? models[hi] : null;
   const amount = cur ? cur.cost : total;
-  const txt = fmtMoney(amount);
+  const txt = fmtMoney(amount, currencySymbol);
   const avail = (size - 2 - thickness * 2) * 0.98;
   const base = cur ? 15 : 17;
   const fit = Math.min(base, Math.max(10, avail / (txt.length * 0.62)));
@@ -198,7 +198,7 @@ export function CostDonut({ models, theme, size = 104, thickness = 16 }:
             style={{ display: "flex", alignItems: "center", gap: 7, padding: "2.5px 0", opacity: hi === -1 || hi === i ? 1 : 0.45, transition: "opacity .14s", cursor: "default", userSelect: "none" }}>
             <span style={{ width: 7, height: 7, borderRadius: 2, background: m.color, flex: "0 0 auto" }} />
             <span style={{ font: `500 10.5px ${t.ui}`, color: t.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, fontWeight: hi === i ? 600 : 500 }}>{m.name.replace("Claude ", "")}</span>
-            <span style={{ font: `600 10.5px ${t.mono}`, color: hi === i ? m.color : t.dim, flex: "0 0 auto" }}>{fmtMoney(m.cost)}</span>
+            <span style={{ font: `600 10.5px ${t.mono}`, color: hi === i ? m.color : t.dim, flex: "0 0 auto" }}>{fmtMoney(m.cost, currencySymbol)}</span>
           </div>
         ))}
       </div>
