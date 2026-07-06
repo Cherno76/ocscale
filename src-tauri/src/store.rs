@@ -11,6 +11,7 @@ use std::path::PathBuf;
 pub struct RawEvent {
     pub ts_ms: i64,
     pub session: String,
+    pub project: String, // project display name (worktree basename, or "global")
     pub model: String,
     pub in_tok: f64,
     pub cc: f64,  // cache creation (tokens_cache_write)
@@ -55,7 +56,7 @@ fn opencode_db_path() -> Option<PathBuf> {
 }
 
 /// Parse an assistant message JSON `data` column into a RawEvent.
-fn parse_message(id: String, session_id: String, data: &str) -> Option<RawEvent> {
+fn parse_message(id: String, session_id: String, project: String, data: &str) -> Option<RawEvent> {
     let v: serde_json::Value = serde_json::from_str(data).ok()?;
 
     // Only assistant messages carry token counts.
@@ -103,6 +104,7 @@ fn parse_message(id: String, session_id: String, data: &str) -> Option<RawEvent>
     Some(RawEvent {
         ts_ms,
         session: session_id,
+        project,
         model,
         in_tok: tok_in,
         cc,
@@ -126,9 +128,14 @@ fn query_events() -> Result<Vec<RawEvent>, rusqlite::Error> {
     let conn = Connection::open(&path)?;
 
     // Read every assistant message that has token data, ordered by time.
+    // Join through session → project to get the project worktree path.
+    // Extract the basename for a clean display name.
     let mut stmt = conn.prepare(
-        "SELECT m.id, m.session_id, m.data
+        "SELECT m.id, m.session_id, m.data,
+                COALESCE(p.worktree, '/') as project_path
          FROM message m
+         JOIN session s ON s.id = m.session_id
+         LEFT JOIN project p ON p.id = s.project_id
          WHERE json_extract(m.data, '$.role') = 'assistant'
            AND json_extract(m.data, '$.tokens.input') > 0
          ORDER BY json_extract(m.data, '$.time.created') ASC",
@@ -139,10 +146,24 @@ fn query_events() -> Result<Vec<RawEvent>, rusqlite::Error> {
             let id: String = row.get(0)?;
             let session_id: String = row.get(1)?;
             let data: String = row.get(2)?;
-            Ok((id, session_id, data))
+            let project_path: String = row.get(3)?;
+            // Extract basename: "/Users/cherno/MyProject" → "MyProject", "/" → "global"
+            let project = if project_path == "/" {
+                "global".to_string()
+            } else {
+                project_path
+                    .rsplit('/')
+                    .next()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("?")
+                    .to_string()
+            };
+            Ok((id, session_id, project, data))
         })?
         .filter_map(|r| r.ok())
-        .filter_map(|(id, session_id, data)| parse_message(id, session_id, &data))
+        .filter_map(|(id, session_id, project, data)| {
+            parse_message(id, session_id, project, &data)
+        })
         .collect();
 
     Ok(events)

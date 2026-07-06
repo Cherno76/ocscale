@@ -19,6 +19,7 @@ static BUILD_LOCK: Mutex<()> = Mutex::new(());
 struct Event {
     ts: DateTime<Local>,
     session: String,
+    project: String,
     model: String,
     input: f64,  // raw tokens, uncached new input only
     cache: f64,  // raw tokens, cache creation + read
@@ -162,6 +163,7 @@ fn compute_event(r: &RawEvent, cfg: &UserConfig, pricing: &Pricing) -> Event {
     Event {
         ts,
         session: r.session.clone(),
+        project: r.project.clone(),
         model,
         input: r.in_tok,
         cache: r.cc + r.cr,
@@ -188,6 +190,8 @@ struct Agg {
     model_tok: HashMap<String, f64>,
     model_cost: HashMap<String, f64>,
     model_priced: HashMap<String, bool>,
+    project_tok: HashMap<String, f64>,
+    project_cost: HashMap<String, f64>,
     mcp_counts: HashMap<String, u64>,
     skill_counts: HashMap<String, u64>,
 }
@@ -210,6 +214,9 @@ impl Agg {
             *self.model_cost.entry(e.model.clone()).or_default() += e.cost;
             // a model is "priced" if any of its messages had a known price
             *self.model_priced.entry(e.model.clone()).or_default() |= e.priced;
+            // project totals (token + cost)
+            *self.project_tok.entry(e.project.clone()).or_default() += e.input + e.cache + e.output;
+            *self.project_cost.entry(e.project.clone()).or_default() += e.cost;
         }
         for s in &e.mcp {
             self.mcp_calls += 1;
@@ -219,6 +226,28 @@ impl Agg {
             self.skill_calls += 1;
             *self.skill_counts.entry(s.clone()).or_default() += 1;
         }
+    }
+
+    fn projects(&self) -> Vec<ModelStat> {
+        let mut v: Vec<(String, f64, f64)> = self
+            .project_tok
+            .iter()
+            .map(|(k, t)| (k.clone(), *t, *self.project_cost.get(k).unwrap_or(&0.0)))
+            .collect();
+        v.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        v.into_iter()
+            .enumerate()
+            .map(|(i, (name, tok, cost))| {
+                ModelStat {
+                    vendor: String::new(), // N/A for projects
+                    tokens: (tok / 1e6 * 100.0).round() / 100.0,
+                    cost: (cost * 100.0).round() / 100.0,
+                    color: if i < PALETTE.len() { PALETTE[i] } else { OVERFLOW_GRAY }.to_string(),
+                    priced: true, // projects always have cost data
+                    name,
+                }
+            })
+            .collect()
     }
 
     fn models(&self) -> Vec<ModelStat> {
@@ -339,6 +368,7 @@ fn report_day(events: &[Event], now: DateTime<Local>) -> PeriodReport {
         ),
         series,
         models: agg.models(),
+        projects: agg.projects(),
         mcp: Agg::named(&agg.mcp_counts),
         skills: Agg::named(&agg.skill_counts),
         req_trend: req_b,
@@ -406,6 +436,7 @@ fn report_week(events: &[Event], now: DateTime<Local>) -> PeriodReport {
         ),
         series,
         models: agg.models(),
+        projects: agg.projects(),
         mcp: Agg::named(&agg.mcp_counts),
         skills: Agg::named(&agg.skill_counts),
         req_trend: req_b,
@@ -483,6 +514,7 @@ fn report_month(events: &[Event], now: DateTime<Local>) -> PeriodReport {
         ),
         series,
         models: agg.models(),
+        projects: agg.projects(),
         mcp: Agg::named(&agg.mcp_counts),
         skills: Agg::named(&agg.skill_counts),
         req_trend: req_b,

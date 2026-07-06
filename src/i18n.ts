@@ -22,6 +22,9 @@ const EN = {
   tokensByModel: "Tokens by model",
   noUsageInThisPeriod: "No usage in this period",
   costByModel: "Cost by model",
+  costByProject: "Cost by project",
+  byModel: "By Model",
+  byProject: "By Project",
   costDash: "—",
   modelsWithoutPricing: (n: number) =>
     `${n} model${n > 1 ? "s" : ""} without pricing data (cost not counted):`,
@@ -84,6 +87,9 @@ const ZH: Dict = {
   tokensByModel: "按模型统计 Token",
   noUsageInThisPeriod: "该时段无使用记录",
   costByModel: "按模型统计费用",
+  costByProject: "按项目统计费用",
+  byModel: "按模型",
+  byProject: "按项目",
   costDash: "—",
   modelsWithoutPricing: (n: number) =>
     `${n} 个模型缺少定价数据（费用未计入）：`,
