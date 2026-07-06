@@ -30,8 +30,8 @@ struct Event {
     msg_count: u64,      // messages in this session (for request counting)
 }
 
-// Top-5 models keep the green/slate scheme; everything beyond is uniform gray.
-const PALETTE: &[&str] = &["#1f9d63", "#34c27e", "#6ad0a0", "#a7e3c5", "#4b5a52"];
+// Top-5 models keep the blue/slate scheme; everything beyond is uniform gray.
+const PALETTE: &[&str] = &["#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#4b5a52"];
 const OVERFLOW_GRAY: &str = "#79817b";
 
 /// Strip a trailing "-YYYYMMDD" date suffix so dated releases merge into

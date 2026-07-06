@@ -5,7 +5,7 @@ import {
 } from "./data";
 import { DICT, type Dict } from "./i18n";
 
-export function TokenGlyph({ color = "#1f9d63", size = 14 }: { color?: string; size?: number }) {
+export function TokenGlyph({ color = "#3b82f6", size = 14 }: { color?: string; size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 14 14">
       <rect x="0.6" y="0.6" width="12.8" height="12.8" rx="3.2" fill="none" stroke={color} strokeWidth="1.3" />
@@ -123,10 +123,9 @@ export function Sparkline({ values, theme, width = 80, height = 24, accent, stro
   );
 }
 
-// Cost-rank palette: darkest/most-prominent green for the biggest cost share,
-// fading down. Colors map to the *cost* ordering here (not the backend's
-// token-rank), so the largest wedge always gets the leading color.
-const DONUT_PALETTE = ["#1f9d63", "#34c27e", "#6ad0a0", "#a7e3c5", "#4b5a52"];
+// Cost-rank palette: darkest/most-prominent blue for the biggest cost share,
+// fading down.
+const DONUT_PALETTE = ["#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#4b5a52"];
 const DONUT_OVERFLOW = "#79817b";
 
 export function CostDonut({ models, theme, size = 104, thickness = 16, currencySymbol = "$", exchangeRate = 1 }:
