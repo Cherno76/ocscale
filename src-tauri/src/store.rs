@@ -128,10 +128,21 @@ fn query_events() -> Result<Vec<RawEvent>, rusqlite::Error> {
     let conn = Connection::open(&path)?;
 
     // Read every assistant message that has token data, ordered by time.
-    // Use the per-message path.cwd (most granular), fall back to session.directory.
+    // Match each message against known projects: find the project whose
+    // worktree is the longest prefix of the message's CWD (or session dir).
+    // This handles the monorepo case where the agent works from the root but
+    // files belong to a sub-project (e.g. CWD=TUI-Project → project=tokenscope).
     let mut stmt = conn.prepare(
         "SELECT m.id, m.session_id, m.data,
-                COALESCE(json_extract(m.data, '$.path.cwd'), s.directory, '/') as project_dir
+                COALESCE(
+                  (SELECT p.worktree FROM project p
+                   WHERE json_extract(m.data, '$.path.cwd') LIKE p.worktree || '%'
+                    AND p.worktree != '/'
+                   ORDER BY LENGTH(p.worktree) DESC LIMIT 1),
+                  json_extract(m.data, '$.path.cwd'),
+                  s.directory,
+                  '/'
+                ) as project_path
          FROM message m
          JOIN session s ON s.id = m.session_id
          WHERE json_extract(m.data, '$.role') = 'assistant'
@@ -144,9 +155,9 @@ fn query_events() -> Result<Vec<RawEvent>, rusqlite::Error> {
             let id: String = row.get(0)?;
             let session_id: String = row.get(1)?;
             let data: String = row.get(2)?;
-            let project_dir: String = row.get(3)?;
-            // Extract basename: "/Users/cherno/TUI-Project/DS-mon" → "DS-mon"
-            let project = project_dir
+            let project_path: String = row.get(3)?;
+            // Extract basename: "/Users/cherno/TUI-Project/tokenscope" → "tokenscope"
+            let project = project_path
                 .rsplit('/')
                 .next()
                 .filter(|s| !s.is_empty())
