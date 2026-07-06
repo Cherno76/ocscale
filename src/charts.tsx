@@ -3,6 +3,7 @@ import {
   Theme, ModelStat, NamedCount, SeriesPoint, HeatDay,
   fmtInt, fmtMoney, fmtTokens, linePath, fmtHeatDate,
 } from "./data";
+import { DICT, type Dict } from "./i18n";
 
 export function TokenGlyph({ color = "#1f9d63", size = 14 }: { color?: string; size?: number }) {
   return (
@@ -15,28 +16,30 @@ export function TokenGlyph({ color = "#1f9d63", size = 14 }: { color?: string; s
   );
 }
 
-export function Segmented({ value, items = ["Day", "Week", "Month"], theme, onSelect }:
-  { value: string; items?: string[]; theme: Theme; onSelect?: (v: string) => void }) {
+export function Segmented({ value, items, itemValues, theme, onSelect }:
+  { value: string; items: string[]; itemValues?: string[]; theme: Theme; onSelect?: (v: string) => void }) {
   const t = theme;
+  const vals = itemValues || items;
   return (
     <div style={{ display: "inline-flex", padding: 2, borderRadius: 7, background: t.segBg, border: `1px solid ${t.segBorder}`, gap: 2 }}>
-      {items.map((it) => {
-        const on = it === value;
+      {items.map((label, i) => {
+        const on = vals[i] === value;
         return (
-          <div key={it} onClick={() => onSelect && onSelect(it)} style={{
+          <div key={vals[i]} onClick={() => onSelect && onSelect(vals[i])} style={{
             font: `600 11px ${t.ui}`, letterSpacing: ".02em", padding: "3px 11px", borderRadius: 5, cursor: "pointer", userSelect: "none",
             color: on ? t.segOnText : t.segOffText, background: on ? t.segOnBg : "transparent",
             boxShadow: on ? t.segOnShadow : "none", transition: "color .15s, background .15s",
-          }}>{it}</div>
+          }}>{label}</div>
         );
       })}
     </div>
   );
 }
 
-export function BarChart({ data, theme, height = 96, accent, accentSoft, radius = 3 }:
-  { data: SeriesPoint[]; theme: Theme; height?: number; accent?: string; accentSoft?: string; radius?: number }) {
+export function BarChart({ data, theme, height = 96, accent, accentSoft, radius = 3, td }:
+  { data: SeriesPoint[]; theme: Theme; height?: number; accent?: string; accentSoft?: string; radius?: number; td?: Dict }) {
   const t = theme;
+  const loc = td || DICT.en;
   accent = accent || t.accent; accentSoft = accentSoft || t.accentSoft;
   const max = Math.max(...data.map((d) => d.input + d.cache + d.output), 1e-9);
   const n = data.length;
@@ -88,7 +91,7 @@ export function BarChart({ data, theme, height = 96, accent, accentSoft, radius 
           font: `500 10px ${t.mono}`, whiteSpace: "nowrap", pointerEvents: "none", zIndex: 9999,
           boxShadow: "0 4px 14px rgba(0,0,0,0.35)" }}>
           <span style={{ color: accent, fontWeight: 600 }}>
-            {(() => { const tot = hi.input + hi.cache + hi.output; return tot === 0 ? "No tokens" : fmtTokens(tot) + " tokens"; })()}
+            {(() => { const tot = hi.input + hi.cache + hi.output; return tot === 0 ? loc.noTokens : loc.tokensLabel(fmtTokens(tot)); })()}
           </span>
           <span style={{ opacity: 0.7 }}> · {hi.full}</span>
         </div>
@@ -203,9 +206,10 @@ export function CostDonut({ models, theme, size = 104, thickness = 16 }:
   );
 }
 
-export function BarList({ items, theme, accent, limit = 5 }:
-  { items: NamedCount[]; theme: Theme; accent?: string; limit?: number }) {
+export function BarList({ items, theme, accent, limit = 5, td }:
+  { items: NamedCount[]; theme: Theme; accent?: string; limit?: number; td?: Dict }) {
   const t = theme; accent = accent || t.accent;
+  const loc = td || DICT.en;
   const [open, setOpen] = useState(false);
   const shown = items.slice(0, open ? items.length : limit);
   // Bar length = this item's count relative to the *most-called* item
@@ -231,13 +235,13 @@ export function BarList({ items, theme, accent, limit = 5 }:
       {more > 0 && (
         <div onClick={() => setOpen(true)} style={{ font: `500 9.5px ${t.ui}`, color: t.faint, paddingTop: 4, cursor: "pointer", userSelect: "none" }}
           onMouseEnter={(e) => (e.currentTarget.style.color = t.dim)} onMouseLeave={(e) => (e.currentTarget.style.color = t.faint)}>
-          +{more} more
+          {loc.nMore(more)}
         </div>
       )}
       {open && items.length > limit && (
         <div onClick={() => setOpen(false)} style={{ font: `500 9.5px ${t.ui}`, color: t.faint, paddingTop: 4, cursor: "pointer", userSelect: "none" }}
           onMouseEnter={(e) => (e.currentTarget.style.color = t.dim)} onMouseLeave={(e) => (e.currentTarget.style.color = t.faint)}>
-          show less
+          {loc.showLess}
         </div>
       )}
     </div>
@@ -250,9 +254,10 @@ function ramp(accent: string, lvl: number, gridLine: string, card: string) {
   return `color-mix(in srgb, ${accent} ${Math.round(op * 100)}%, ${card})`;
 }
 
-export function Heatmap({ days, theme, accent, gap = 2 }:
-  { days: HeatDay[]; theme: Theme; accent?: string; gap?: number }) {
+export function Heatmap({ days, theme, accent, gap = 2, td }:
+  { days: HeatDay[]; theme: Theme; accent?: string; gap?: number; td?: Dict }) {
   const t = theme; accent = accent || t.accent;
+  const loc = td || DICT.en;
   const [hi, setHi] = useState<HeatDay | null>(null);
   const [tip, setTip] = useState({ x: 0, y: 0 });
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -313,9 +318,9 @@ export function Heatmap({ days, theme, accent, gap = 2 }:
         ))}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 5, justifyContent: "flex-end", marginTop: 8, font: `500 8.5px ${t.mono}`, color: t.faint }}>
-        <span>Less</span>
+        <span>{loc.less}</span>
         {[0, 1, 2, 3, 4].map((l) => (<span key={l} style={{ width: 9, height: 9, borderRadius: 2, background: ramp(accent!, l, t.gridLine, t.card) }} />))}
-        <span>More</span>
+        <span>{loc.more}</span>
       </div>
       {hi && (
         <div style={{
@@ -325,7 +330,7 @@ export function Heatmap({ days, theme, accent, gap = 2 }:
           background: t.tip, color: "#fff", borderRadius: 6, padding: "5px 8px",
           font: `500 10px ${t.mono}`, whiteSpace: "nowrap", pointerEvents: "none", zIndex: 9999,
           boxShadow: "0 4px 14px rgba(0,0,0,0.35)" }}>
-          <span style={{ color: accent, fontWeight: 600 }}>{hi.tokens === 0 ? "No calls" : fmtTokens(hi.tokens) + " tokens"}</span>
+          <span style={{ color: accent, fontWeight: 600 }}>{hi.tokens === 0 ? loc.noCalls : loc.tokensLabel(fmtTokens(hi.tokens))}</span>
           <span style={{ opacity: 0.7 }}> · {fmtHeatDate(hi.date)}</span>
         </div>
       )}

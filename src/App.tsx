@@ -10,6 +10,7 @@ import {
 import {
   TokenGlyph, Segmented, BarChart, Sparkline, CostDonut, BarList, Heatmap,
 } from "./charts";
+import { I18nContext, DICT, useT, type I18nCtx, type Lang, type Dict } from "./i18n";
 
 // Count up to `target`. Restarts from 0 whenever `resetKey` changes (popover
 // open / period switch); on a live value change it eases from the current
@@ -108,8 +109,8 @@ function MiniStat({ label, value, sub, theme, accent, children }:
 
 // Cached/Rest legend: full words by default, abbreviated when the row would
 // otherwise overflow. Mirrors the split bar above (dark = cached, light = rest).
-function SplitLegend({ t, cacheM, restM, cachedPct }:
-  { t: Theme; cacheM: number; restM: number; cachedPct: number }) {
+function SplitLegend({ t, tr, cacheM, restM, cachedPct }:
+  { t: Theme; tr: Dict; cacheM: number; restM: number; cachedPct: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const [compact, setCompact] = useState(false);
   const key = `${cacheM}|${restM}|${cachedPct}`;
@@ -124,9 +125,9 @@ function SplitLegend({ t, cacheM, restM, cachedPct }:
       display: "flex", alignItems: "center", gap: 14,
       font: `500 10px ${t.mono}`, color: t.dim, marginBottom: 14, whiteSpace: "nowrap", overflow: "hidden",
     }}>
-      <span><span style={{ color: t.accent }}>●</span> {compact ? "Cache" : "Cached"} {cacheM.toFixed(2)}M</span>
-      <span><span style={{ color: t.accentSoft }}>●</span> New {restM.toFixed(2)}M</span>
-      <span style={{ color: t.faint }}>{cachedPct}% cached</span>
+      <span><span style={{ color: t.accent }}>●</span> {tr.cached} {cacheM.toFixed(2)}M</span>
+      <span><span style={{ color: t.accentSoft }}>●</span> {tr.new_} {restM.toFixed(2)}M</span>
+      <span style={{ color: t.faint }}>{cachedPct}{tr.pctCached}</span>
     </div>
   );
 }
@@ -138,12 +139,12 @@ const Label = ({ t, children }: { t: Theme; children: React.ReactNode }) => (
   <span style={{ font: `600 10px ${t.ui}`, color: t.dim, letterSpacing: ".05em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{children}</span>
 );
 
-function ThemeToggle({ pref, theme, onCycle }: { pref: "dark" | "light" | "system"; theme: Theme; onCycle: () => void }) {
+function ThemeToggle({ pref, theme, td, onCycle }: { pref: "dark" | "light" | "system"; theme: Theme; td: Dict; onCycle: () => void }) {
   const t = theme;
   // Single button cycling Dark → Light → System; the icon shows the current mode.
-  const label = pref === "system" ? "System" : pref === "dark" ? "Dark" : "Light";
+  const label = pref === "system" ? td.system : pref === "dark" ? td.dark : td.light;
   return (
-    <button onClick={onCycle} title={`Theme: ${label} (click to change)`} aria-label={`theme: ${label}`} style={{
+    <button onClick={onCycle} title={`Theme: ${label}`} aria-label={`theme: ${label}`} style={{
       display: "inline-flex", alignItems: "center", justifyContent: "center",
       width: 26, height: 26, borderRadius: 7, cursor: "pointer", padding: 0,
       background: t.segBg, border: `1px solid ${t.segBorder}`, color: t.dim,
@@ -167,10 +168,23 @@ function ThemeToggle({ pref, theme, onCycle }: { pref: "dark" | "light" | "syste
   );
 }
 
-function ScreenshotButton({ theme, busy, onClick }: { theme: Theme; busy: boolean; onClick: () => void }) {
+function LangToggle({ lang, onClick, theme }: { lang: Lang; onClick: () => void; theme: Theme }) {
+  return (
+    <button onClick={onClick} title={lang === "en" ? "中文" : "English"} aria-label="switch language" style={{
+      display: "inline-flex", alignItems: "center", justifyContent: "center",
+      width: 26, height: 26, borderRadius: 7, cursor: "pointer", padding: 0,
+      background: theme.segBg, border: `1px solid ${theme.segBorder}`, color: theme.dim,
+      font: `600 11px ${theme.mono}`, letterSpacing: ".02em",
+    }}>
+      {lang === "en" ? "中" : "EN"}
+    </button>
+  );
+}
+
+function ScreenshotButton({ theme, busy, onClick, td }: { theme: Theme; busy: boolean; onClick: () => void; td: Dict }) {
   const t = theme;
   return (
-    <button onClick={onClick} disabled={busy} title="Save screenshot to Desktop" aria-label="save screenshot" style={{
+    <button onClick={onClick} disabled={busy} title={td.screenshotTitle} aria-label="save screenshot" style={{
       display: "inline-flex", alignItems: "center", justifyContent: "center",
       width: 26, height: 26, borderRadius: 7, cursor: busy ? "default" : "pointer", padding: 0,
       background: t.segBg, border: `1px solid ${t.segBorder}`, color: t.dim,
@@ -189,8 +203,11 @@ function ScreenshotButton({ theme, busy, onClick }: { theme: Theme; busy: boolea
   );
 }
 
-function Panel({ dash, dark, themePref, onToggleTheme, openGen, active }: { dash: Dashboard; dark: boolean; themePref: "dark" | "light" | "system"; onToggleTheme: () => void; openGen: number; active: boolean }) {
+function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, toggleLang }:
+  { dash: Dashboard; dark: boolean; themePref: "dark" | "light" | "system"; onToggleTheme: () => void; openGen: number; active: boolean; lang: Lang; toggleLang: () => void }) {
   const t = TH[dark ? "dark" : "light"];
+  const { t: tr } = useT();
+  const periodItems = [tr.day, tr.week, tr.month];
   // Drag the popover by its body (Windows/Linux only — macOS uses the menu-bar
   // NSPanel and is gated out). A real OS window-drag begins only once the
   // pointer moves past a small threshold, so a plain click still clicks through
@@ -228,7 +245,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active }: { dash
   const maxM = Math.max(...tokenModels.map((m) => m.tokens), 1e-9);
   // Per-row shares that sum to exactly 100.0% (largest-remainder over visible rows).
   const tokenShares = sharePcts(tokenModels.map((m) => m.tokens));
-  const trendSub = { Day: "today 24h", Week: "this week", Month: "this month" }[period];
+  const trendSub = { Day: tr.today24h, Week: tr.thisWeek, Month: tr.thisMonth }[period];
 
   // screenshot capture: rasterize the full panel card to a PNG and hand it to
   // the Rust `save_screenshot` command (browser preview falls back to a download).
@@ -243,7 +260,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active }: { dash
   const captureScreenshot = async () => {
     if (shotBusy) return;
     const el = document.querySelector<HTMLElement>(".om-scroll");
-    if (!el) { showToast("Nothing to capture", false); return; }
+    if (!el) return;
     setShotBusy(true);
     try {
       // explicit width/height = full scrollable content, not just the viewport;
@@ -259,7 +276,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active }: { dash
       const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
       if (inTauri) {
         await invoke<string>("save_screenshot", { dataUrl });
-        showToast("Saved to Desktop", true);
+        showToast(tr.savedToDesktop, true);
       } else {
         const a = document.createElement("a");
         a.href = dataUrl;
@@ -267,10 +284,10 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active }: { dash
         document.body.appendChild(a);
         a.click();
         a.remove();
-        showToast("Downloaded", true);
+        showToast(tr.downloaded, true);
       }
     } catch {
-      showToast("Screenshot failed", false);
+      showToast(tr.screenshotFailed, false);
     } finally {
       setShotBusy(false);
     }
@@ -318,12 +335,14 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active }: { dash
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <TokenGlyph color={t.accent} size={16} />
-            <span style={{ font: `600 13px ${t.ui}`, color: t.text, letterSpacing: ".01em" }}>Tokenscope</span>
+            <span style={{ font: `600 13px ${t.ui}`, color: t.text, letterSpacing: ".01em" }}>{tr.appName}</span>
           </div>
           <div data-no-drag="" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "default" }}>
-            <Segmented value={period} theme={t} onSelect={(v) => setPeriod(v as any)} />
-            <ThemeToggle pref={themePref} theme={t} onCycle={onToggleTheme} />
-            <ScreenshotButton theme={t} busy={shotBusy} onClick={captureScreenshot} />
+            <Segmented value={period} items={periodItems} itemValues={["Day","Week","Month"]} theme={t}
+              onSelect={(v) => setPeriod(v as any)} />
+            <ThemeToggle pref={themePref} theme={t} td={tr} onCycle={onToggleTheme} />
+            <LangToggle lang={lang} onClick={toggleLang} theme={t} />
+            <ScreenshotButton theme={t} busy={shotBusy} onClick={captureScreenshot} td={tr} />
           </div>
         </div>
         {/* scrolling body */}
@@ -331,14 +350,14 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active }: { dash
         {/* hero */}
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 10 }}>
           <div>
-            <div style={{ font: `500 10px ${t.ui}`, color: t.dim, letterSpacing: ".04em", textTransform: "uppercase" }}>Total tokens</div>
+            <div style={{ font: `500 10px ${t.ui}`, color: t.dim, letterSpacing: ".04em", textTransform: "uppercase" }}>{tr.totalTokens}</div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 3 }}>
               <span style={{ font: `600 30px ${t.mono}`, color: t.text, letterSpacing: "-.01em" }}>{animTotal.toFixed(2)}<span style={{ font: `500 15px ${t.mono}`, color: t.dim, marginLeft: 2 }}>M</span></span>
               {Math.round(M.deltaTokens) !== 0 && <Delta v={M.deltaTokens} theme={t} />}
             </div>
           </div>
           <div style={{ textAlign: "right" }}>
-            <div style={{ font: `500 10px ${t.ui}`, color: t.dim }}>Est. cost</div>
+            <div style={{ font: `500 10px ${t.ui}`, color: t.dim }}>{tr.estCost}</div>
             <div style={{ font: `600 18px ${t.mono}`, color: t.accent, marginTop: 2 }}>${M.cost.toFixed(2)}</div>
           </div>
         </div>
@@ -350,33 +369,33 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active }: { dash
             <div style={{ width: `${restPct}%`, background: t.accentSoft }} />
           </>}
         </div>
-        <SplitLegend t={t} cacheM={M.cacheTokens} restM={M.inputTokens + M.outputTokens} cachedPct={pct(M.cacheTokens, M.totalTokens)} />
+        <SplitLegend t={t} tr={tr} cacheM={M.cacheTokens} restM={M.inputTokens + M.outputTokens} cachedPct={pct(M.cacheTokens, M.totalTokens)} />
         {/* bar chart */}
-        <BarChart data={P.series} theme={t} height={84} />
+        <BarChart data={P.series} theme={t} height={84} td={tr} />
         <SectionRule t={t} m="14px 0 10px" />
         {/* models */}
-        <div style={{ marginBottom: 4 }}><Label t={t}>Tokens by model</Label></div>
-        {tokenModels.length === 0 && <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>No usage in this period</div>}
+        <div style={{ marginBottom: 4 }}><Label t={t}>{tr.tokensByModel}</Label></div>
+        {tokenModels.length === 0 && <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
         {tokenModels.map((m, i) => <ModelRow key={i} m={m} max={maxM} theme={t} share={tokenShares[i]} />)}
         <SectionRule t={t} m="10px 0 10px" />
         {/* cost donut */}
-        <div style={{ marginBottom: 8 }}><Label t={t}>Cost by model</Label></div>
+        <div style={{ marginBottom: 8 }}><Label t={t}>{tr.costByModel}</Label></div>
         {costModels.length > 0
           ? <CostDonut models={costModels} theme={t} size={100} thickness={15} />
-          : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>—</div>}
+          : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>}
         {unpricedModels.length > 0 && (
           <div style={{ marginTop: 9, font: `500 9.5px/1.5 ${t.mono}`, color: t.faint }}>
-            {unpricedModels.length} model{unpricedModels.length > 1 ? "s" : ""} without pricing data (cost not counted):{" "}
+            {tr.modelsWithoutPricing(unpricedModels.length)}{" "}
             <span style={{ color: t.dim }}>{unpricedModels.map((m) => m.name).join(", ")}</span>
           </div>
         )}
         <SectionRule t={t} m="12px 0 12px" />
         {/* footer stats */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <MiniStat label="Requests" value={fmtInt(M.requests)} sub={`${M.sessions} sessions`} theme={t}>
+          <MiniStat label={tr.requests} value={fmtInt(M.requests)} sub={`${M.sessions} ${tr.sessions}`} theme={t}>
             <Sparkline values={P.reqTrend.length ? P.reqTrend : [0, 0]} theme={t} width={52} height={20} accent={t.accent} />
           </MiniStat>
-          <MiniStat label="Cost trend" value={`$${M.cost.toFixed(2)}`} sub={trendSub} theme={t} accent={t.accent}>
+          <MiniStat label={tr.costTrend} value={`$${M.cost.toFixed(2)}`} sub={trendSub} theme={t} accent={t.accent}>
             <Sparkline values={P.costTrend.length ? P.costTrend : [0, 0]} theme={t} width={52} height={20} accent={t.accent} />
           </MiniStat>
         </div>
@@ -385,12 +404,12 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active }: { dash
           <>
             <SectionRule t={t} />
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 7 }}>
-              <Label t={t}>MCP calls</Label>
-              <span style={{ font: `500 10px ${t.mono}`, color: t.faint, whiteSpace: "nowrap" }}><span style={{ color: t.text, fontWeight: 600 }}>{fmtInt(M.mcpCalls)}</span> · {M.servers} servers</span>
+              <Label t={t}>{tr.mcpCalls}</Label>
+              <span style={{ font: `500 10px ${t.mono}`, color: t.faint, whiteSpace: "nowrap" }}><span style={{ color: t.text, fontWeight: 600 }}>{fmtInt(M.mcpCalls)}</span> · {M.servers} {tr.servers}</span>
             </div>
             {P.mcp.length > 0
-              ? <BarList key={period} items={P.mcp} theme={t} accent={t.accent} />
-              : <div style={{ font: `500 10px ${t.mono}`, color: t.faint, padding: "2px 0" }}>No MCP calls in this period</div>}
+              ? <BarList key={period} items={P.mcp} theme={t} accent={t.accent} td={tr} />
+              : <div style={{ font: `500 10px ${t.mono}`, color: t.faint, padding: "2px 0" }}>{tr.noMcpCalls}</div>}
           </>
         )}
         {/* Skill — shown whenever the user has installed skills */}
@@ -398,21 +417,21 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active }: { dash
           <>
             <SectionRule t={t} />
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 7 }}>
-              <Label t={t}>Skill calls</Label>
-              <span style={{ font: `500 10px ${t.mono}`, color: t.faint, whiteSpace: "nowrap" }}><span style={{ color: t.text, fontWeight: 600 }}>{fmtInt(M.skillCalls)}</span> · {M.skills} skills</span>
+              <Label t={t}>{tr.skillCalls}</Label>
+              <span style={{ font: `500 10px ${t.mono}`, color: t.faint, whiteSpace: "nowrap" }}><span style={{ color: t.text, fontWeight: 600 }}>{fmtInt(M.skillCalls)}</span> · {M.skills} {tr.skills}</span>
             </div>
             {P.skills.length > 0
-              ? <BarList key={period} items={P.skills} theme={t} accent={t.accent} />
-              : <div style={{ font: `500 10px ${t.mono}`, color: t.faint, padding: "2px 0" }}>No skill calls in this period</div>}
+              ? <BarList key={period} items={P.skills} theme={t} accent={t.accent} td={tr} />
+              : <div style={{ font: `500 10px ${t.mono}`, color: t.faint, padding: "2px 0" }}>{tr.noSkillCalls}</div>}
           </>
         )}
         {/* heatmap */}
         <SectionRule t={t} />
-        <div style={{ marginBottom: 9 }}><Label t={t}>Daily activity</Label></div>
-        <Heatmap days={dash.heatmap} theme={t} accent={t.accent} />
+        <div style={{ marginBottom: 9 }}><Label t={t}>{tr.dailyActivity}</Label></div>
+        <Heatmap days={dash.heatmap} theme={t} accent={t.accent} td={tr} />
         {/* footer note */}
         <div style={{ marginTop: 12, font: `500 8.5px ${t.mono}`, color: t.faint, textAlign: "center" }}>
-          Est. cost via models.dev / LiteLLM · estimate
+          {tr.estimateNote}
         </div>
         </div>{/* /scrolling body */}
       </div>
@@ -433,6 +452,17 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active }: { dash
 }
 
 export default function App() {
+  const [curLang, setCurLang] = useState<Lang>(() => {
+    const saved = typeof localStorage !== "undefined" ? localStorage.getItem("tokenscope-lang") : null;
+    return saved === "zh" ? "zh" : "en";
+  });
+  const toggleLang = () =>
+    setCurLang((p) => {
+      const n = p === "en" ? "zh" : "en";
+      try { localStorage.setItem("tokenscope-lang", n); } catch {}
+      return n;
+    });
+  const tr = DICT[curLang];
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [openGen, setOpenGen] = useState(0);
@@ -541,17 +571,19 @@ export default function App() {
   }, [dark]);
 
   const t = TH[dark ? "dark" : "light"];
-  if (err) {
-    return <div style={{ padding: 20, font: `500 12px ${t.mono}`, color: "#e0795f" }}>Failed to load: {err}</div>;
-  }
-  if (!dash) {
-    return (
-      <div style={{ height: "100vh", padding: 10, boxSizing: "border-box", background: "transparent" }}>
-        <div style={{ height: "100%", borderRadius: 14, background: dark ? "#1f2226" : "#ffffff",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          font: `500 12px ${t.mono}`, color: t.dim }}>Loading…</div>
-      </div>
-    );
-  }
-  return <Panel dash={dash} dark={dark} themePref={themePref} onToggleTheme={cycleTheme} openGen={openGen} active={focused} />;
+  const i18nCtx: I18nCtx = { lang: curLang, t: tr, toggleLang };
+  return (
+    <I18nContext.Provider value={i18nCtx}>
+      {err
+        ? <div style={{ padding: 20, font: `500 12px ${t.mono}`, color: "#e0795f" }}>{tr.failedToLoad} {err}</div>
+        : !dash
+        ? <div style={{ height: "100vh", padding: 10, boxSizing: "border-box", background: "transparent" }}>
+            <div style={{ height: "100%", borderRadius: 14, background: dark ? "#1f2226" : "#ffffff",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              font: `500 12px ${t.mono}`, color: t.dim }}>{tr.loading}</div>
+          </div>
+        : <Panel dash={dash} dark={dark} themePref={themePref} onToggleTheme={cycleTheme}
+            openGen={openGen} active={focused} lang={curLang} toggleLang={toggleLang} />}
+    </I18nContext.Provider>
+  );
 }

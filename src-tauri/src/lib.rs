@@ -370,14 +370,8 @@ fn begin_drag(_window: tauri::Window) -> Result<(), String> {
     Ok(())
 }
 
-/// Anchor the panel under the tray icon, top flush with the menu-bar bottom:
-///   x = tray_x + tray_width/2 − window_width/2
-///   y = tray_y + tray_height
-/// The tray rect's y is the icon *top* (≈ screen top, 0); adding its height
-/// lands the panel just below the menu bar. (tauri-plugin-positioner gets away
-/// with y = tray_y because macOS auto-constrains a normal window out from under
-/// the menu bar — but a floating NSPanel isn't constrained, so we offset it
-/// ourselves.) All physical px; no monitor lookup, so it works while hidden.
+/// Centre the panel on the primary monitor. Ignores the tray anchor — the user
+/// requested a centred popover rather than a tray-anchored one.
 #[cfg(target_os = "macos")]
 fn position_panel(app: &tauri::AppHandle) {
     let Some(w) = app.get_webview_window("main") else {
@@ -387,24 +381,17 @@ fn position_panel(app: &tauri::AppHandle) {
         return;
     };
     let win_w = size.width as f64;
+    let win_h = size.height as f64;
 
-    if let Some(state) = app.try_state::<TrayAnchor>() {
-        if let Some((tx, ty, tw, th)) = *state.0.lock().unwrap() {
-            let x = tx + tw / 2.0 - win_w / 2.0;
-            let y = ty + th;
-            let _ = w.set_position(tauri::PhysicalPosition::new(x as i32, y as i32));
-            return;
-        }
-    }
-
-    // Fallback (e.g. opened from the menu before any tray click): centre near
-    // the top of the current monitor.
     if let Ok(Some(monitor)) = w.current_monitor() {
         let mp = monitor.position();
         let ms = monitor.size();
         let x = mp.x as f64 + (ms.width as f64 - win_w) / 2.0;
-        let y = mp.y as f64 + 24.0 * monitor.scale_factor();
-        let _ = w.set_position(tauri::PhysicalPosition::new(x as i32, y as i32));
+        let y = mp.y as f64 + (ms.height as f64 - win_h) / 2.0;
+        let _ = w.set_position(tauri::PhysicalPosition::new(
+            x.max(0.0) as i32,
+            y.max(0.0) as i32,
+        ));
     }
 }
 
@@ -436,29 +423,15 @@ fn save_popover_pos(x: i32, y: i32) {
     }
 }
 
-/// Position AND right-size the popover for the monitor it opens on. Reopens at
-/// the user's last-dragged spot if it's still on a connected monitor, else pins
-/// to the top-right of the tray monitor's work area (margin from the edges).
-///
-/// Everything is derived from the *intended* logical size × the target monitor's
-/// scale — never the window's current physical size — and the size is re-asserted
-/// on every open. A borderless window can otherwise get stuck at the previous
-/// monitor's physical size after a DPI/monitor change (e.g. unplugging a 175%
-/// display drops back to 100% but the window stays oversized until restart);
-/// forcing the size here makes it recover on the next open. The monitor is
-/// resolved from the cached tray rect -> current -> primary; work_area excludes
-/// the taskbar so the margin is clean wherever the taskbar sits.
+/// Centre the panel on the current monitor.
 #[cfg(not(target_os = "macos"))]
 fn position_popover_windows(app: &tauri::AppHandle) {
-    // Logical size — must match app.windows[0] width/height in tauri.conf.json.
     const POPOVER_W: f64 = 400.0;
     const POPOVER_H: f64 = 660.0;
-    const MARGIN: f64 = 12.0; // logical px gap from the screen edges
 
     let Some(w) = app.get_webview_window("main") else {
         return;
     };
-    // Force the intended size at the target monitor's DPI (recovers a stuck size).
     let fit = |scale: f64| {
         let _ = w.set_size(tauri::PhysicalSize::new(
             (POPOVER_W * scale).round() as u32,
@@ -466,39 +439,22 @@ fn position_popover_windows(app: &tauri::AppHandle) {
         ));
     };
 
-    // 1. Reopen at the last position if a point just inside it is still on a
-    //    connected monitor (a disconnected/shrunk monitor falls through to the
-    //    default rather than opening off-screen).
-    if let Some((sx, sy)) = load_popover_pos() {
-        if let Ok(Some(m)) = w.monitor_from_point(sx as f64 + 20.0, sy as f64 + 20.0) {
-            let _ = w.set_position(tauri::PhysicalPosition::new(sx, sy));
-            fit(m.scale_factor());
-            return;
-        }
-    }
-
-    // 2. Default: top-right of the tray monitor's work area.
-    //    Prefer the monitor under the tray icon; fall back to current, then primary.
-    let anchor = app
-        .try_state::<TrayAnchor>()
-        .and_then(|s| *s.0.lock().unwrap());
-    let monitor = anchor
-        .and_then(|(tx, ty, _, _)| w.monitor_from_point(tx, ty).ok().flatten())
-        .or_else(|| w.current_monitor().ok().flatten())
+    let monitor = w.current_monitor().ok().flatten()
         .or_else(|| app.primary_monitor().ok().flatten());
 
     if let Some(m) = monitor {
-        let area = m.work_area(); // excludes the taskbar
+        let area = m.work_area();
         let scale = m.scale_factor();
-        let margin = MARGIN * scale; // keep the visual gap DPI-consistent
-        let win_w = POPOVER_W * scale; // intended physical width on this monitor
-        let right = area.position.x as f64 + area.size.width as f64;
-        let x = right - win_w - margin;
-        let y = area.position.y as f64 + margin;
-        let _ = w.set_position(tauri::PhysicalPosition::new(x as i32, y as i32));
+        let win_w = POPOVER_W * scale;
+        let win_h = POPOVER_H * scale;
+        let x = area.position.x as f64 + (area.size.width as f64 - win_w) / 2.0;
+        let y = area.position.y as f64 + (area.size.height as f64 - win_h) / 2.0;
+        let _ = w.set_position(tauri::PhysicalPosition::new(
+            x.max(0.0) as i32,
+            y.max(0.0) as i32,
+        ));
         fit(scale);
     } else {
-        // Couldn't resolve a monitor (rare) → let the positioner place it.
         let _ = w.move_window(Position::TopRight);
     }
 }
