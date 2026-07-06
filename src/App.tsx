@@ -215,7 +215,6 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
   const canDrag = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window && !navigator.userAgent.includes("Macintosh");
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const [period, setPeriod] = useState<"Day" | "Week" | "Month">("Week");
-  const [costView, setCostView] = useState<"model" | "project">("model");
   const [refreshing, setRefreshing] = useState(false);
   const [autostartOn, setAutostartOn] = useState(false);
   useEffect(() => {
@@ -265,8 +264,6 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
     (m) => Math.round((m.tokens / (M.totalTokens || 1)) * 1000) / 10 >= 0.1
   );
   const costModels = models.filter((m) => m.cost > 0);
-  // project cost breakdown
-  const projectModels = P.projects.filter((p) => p.cost > 0);
   // models that were used but have no LiteLLM pricing (cost unknown, not $0)
   const unpricedModels = models.filter((m) => !m.priced && m.tokens > 0);
   const maxM = Math.max(...tokenModels.map((m) => m.tokens), 1e-9);
@@ -406,23 +403,12 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
         {tokenModels.map((m, i) => <ModelRow key={i} m={m} max={maxM} theme={t} share={tokenShares[i]} />)}
         <SectionRule t={t} m="10px 0 10px" />
         {/* cost donut */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-          <Label t={t}>{costView === "model" ? tr.costByModel : tr.costByProject}</Label>
-          <Segmented value={costView} items={[tr.byModel, tr.byProject]} itemValues={["model","project"]} theme={t}
-            onSelect={(v) => setCostView(v as any)} />
-        </div>
-        {costView === "model" ? (
-          costModels.length > 0
-            ? <CostDonut models={costModels} theme={t} size={100} thickness={15}
-                currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} />
-            : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
-        ) : (
-          projectModels.length > 0
-            ? <CostDonut models={projectModels} theme={t} size={100} thickness={15}
-                currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} />
-            : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
-        )}
-        {costView === "model" && unpricedModels.length > 0 && (
+        <div style={{ marginBottom: 8 }}><Label t={t}>{tr.costByModel}</Label></div>
+        {costModels.length > 0
+          ? <CostDonut models={costModels} theme={t} size={100} thickness={15}
+              currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} />
+          : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>}
+        {unpricedModels.length > 0 && (
           <div style={{ marginTop: 9, font: `500 9.5px/1.5 ${t.mono}`, color: t.faint }}>
             {tr.modelsWithoutPricing(unpricedModels.length)}{" "}
             <span style={{ color: t.dim }}>{unpricedModels.map((m) => m.name).join(", ")}</span>

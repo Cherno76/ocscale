@@ -9,7 +9,7 @@ export interface Metrics {
   deltaTokens: number; deltaCost: number; servers: number; skills: number;
 }
 export interface PeriodReport {
-  metrics: Metrics; series: SeriesPoint[]; models: ModelStat[]; projects: ModelStat[];
+  metrics: Metrics; series: SeriesPoint[]; models: ModelStat[];
   mcp: NamedCount[]; skills: NamedCount[]; reqTrend: number[]; costTrend: number[];
 }
 export interface HeatDay { date: string; tokens: number; level: number }

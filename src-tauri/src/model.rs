@@ -56,7 +56,6 @@ pub struct PeriodReport {
     pub metrics: Metrics,
     pub series: Vec<SeriesPoint>,
     pub models: Vec<ModelStat>,
-    pub projects: Vec<ModelStat>,
     pub mcp: Vec<NamedCount>,
     pub skills: Vec<NamedCount>,
     #[serde(rename = "reqTrend")]

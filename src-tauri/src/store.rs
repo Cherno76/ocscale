@@ -11,7 +11,6 @@ use std::path::PathBuf;
 pub struct RawEvent {
     pub ts_ms: i64,
     pub session: String,
-    pub project: String, // project display name (worktree basename, or "global")
     pub model: String,
     pub in_tok: f64,
     pub cc: f64,  // cache creation (tokens_cache_write)
@@ -56,7 +55,7 @@ fn opencode_db_path() -> Option<PathBuf> {
 }
 
 /// Parse an assistant message JSON `data` column into a RawEvent.
-fn parse_message(id: String, session_id: String, project: String, data: &str) -> Option<RawEvent> {
+fn parse_message(id: String, session_id: String, data: &str) -> Option<RawEvent> {
     let v: serde_json::Value = serde_json::from_str(data).ok()?;
 
     // Only assistant messages carry token counts.
@@ -104,7 +103,6 @@ fn parse_message(id: String, session_id: String, project: String, data: &str) ->
     Some(RawEvent {
         ts_ms,
         session: session_id,
-        project,
         model,
         in_tok: tok_in,
         cc,
@@ -128,24 +126,9 @@ fn query_events() -> Result<Vec<RawEvent>, rusqlite::Error> {
     let conn = Connection::open(&path)?;
 
     // Read every assistant message that has token data, ordered by time.
-    // Match each message against known projects by checking if the CWD is
-    // inside (or equal to) a project's worktree. For monorepo root messages
-    // that don't match any specific project, the CWD basename is used as the
-    // project name (e.g. "TUI-Project"). Those are genuinely root-level
-    // messages — switching to Month view will show deeper project breakdown.
     let mut stmt = conn.prepare(
-        "SELECT m.id, m.session_id, m.data,
-                COALESCE(
-                  (SELECT p.worktree FROM project p
-                   WHERE json_extract(m.data, '$.path.cwd') LIKE p.worktree || '%'
-                    AND p.worktree != '/'
-                   ORDER BY LENGTH(p.worktree) DESC LIMIT 1),
-                  json_extract(m.data, '$.path.cwd'),
-                  s.directory,
-                  '/'
-                ) as project_path
+        "SELECT m.id, m.session_id, m.data
          FROM message m
-         JOIN session s ON s.id = m.session_id
          WHERE json_extract(m.data, '$.role') = 'assistant'
            AND json_extract(m.data, '$.tokens.input') > 0
          ORDER BY json_extract(m.data, '$.time.created') ASC",
@@ -156,19 +139,11 @@ fn query_events() -> Result<Vec<RawEvent>, rusqlite::Error> {
             let id: String = row.get(0)?;
             let session_id: String = row.get(1)?;
             let data: String = row.get(2)?;
-            let project_path: String = row.get(3)?;
-            // Extract basename: "/Users/cherno/TUI-Project/tokenscope" → "tokenscope"
-            let project = project_path
-                .rsplit('/')
-                .next()
-                .filter(|s| !s.is_empty())
-                .unwrap_or("global")
-                .to_string();
-            Ok((id, session_id, project, data))
+            Ok((id, session_id, data))
         })?
         .filter_map(|r| r.ok())
-        .filter_map(|(id, session_id, project, data)| {
-            parse_message(id, session_id, project, &data)
+        .filter_map(|(id, session_id, data)| {
+            parse_message(id, session_id, &data)
         })
         .collect();
 
