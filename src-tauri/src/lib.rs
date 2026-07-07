@@ -1,3 +1,6 @@
+// tauri-nspanel uses the legacy objc crate; suppress its deprecation warnings.
+#![allow(deprecated, unexpected_cfgs)]
+
 mod config;
 mod model;
 mod parser;
@@ -764,7 +767,7 @@ pub fn run() {
             // on/off toggle lives in the tray's right-click menu (built below);
             // we do NOT force-enable on every start, which would undo a manual
             // opt-out. `autostart_on` seeds the menu checkbox.
-            let autostart_on = reconcile_autostart(app.handle());
+            let _autostart_on = reconcile_autostart(app.handle());
 
             // Popover behaviour. On macOS, convert the window to a non-activating
             // NSPanel so it can float over apps in native fullscreen, and hide it

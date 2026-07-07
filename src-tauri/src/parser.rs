@@ -27,7 +27,6 @@ struct Event {
     priced: bool, // whether a price was found for this model
     mcp: Vec<String>,   // user-installed server names called in this msg
     skills: Vec<String>, // user-installed skill names called in this msg
-    msg_count: u64,      // messages in this session (for request counting)
 }
 
 // Top-5 models keep the blue/slate scheme; everything beyond is uniform gray.
@@ -170,7 +169,6 @@ fn compute_event(r: &RawEvent, cfg: &UserConfig, pricing: &Pricing) -> Event {
         priced: cost_opt.is_some(),
         mcp,
         skills,
-        msg_count: r.msg_count,
     }
 }
 
