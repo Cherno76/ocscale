@@ -81,6 +81,7 @@ const EN = {
   sessionsTab: "Sessions",
   // Agents tab
   tokensByAgent: "Tokens by agent",
+  costByAgent: "Cost by agent",
   byAgent: "Agent",
   // Code tab
   codeActivity: "Code activity",
@@ -158,6 +159,7 @@ const ZH: Dict = {
   sessionsTab: "会话",
   // Agents tab
   tokensByAgent: "按 Agent 统计 Token",
+  costByAgent: "按 Agent 统计费用",
   byAgent: "Agent",
   // Code tab
   codeActivity: "代码活动",

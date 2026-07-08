@@ -610,6 +610,22 @@ function AgentsTab({ dash, theme, tr }: { dash: Dashboard; theme: Theme; tr: Dic
   const agents = dash.agents || [];
   const max = Math.max(...agents.map(a => a.tokens), 1e-9);
   const shares = sharePcts(agents.map(a => a.tokens));
+  // Build donut items from agents with cost > 0
+  const PALETTE = ["#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#4b5a52", "#a78bfa", "#e0795f", "#6ee7b7"];
+  const costAgents: ModelStat[] = agents
+    .filter(a => a.cost > 0)
+    .map(a => {
+      const hash = a.agent.split("").reduce((s, c) => s + c.charCodeAt(0), 0);
+      return {
+        name: a.agent,
+        vendor: "",
+        tokens: a.tokens,
+        cost: a.cost,
+        color: PALETTE[hash % PALETTE.length],
+        priced: true,
+        costSource: "pricing",
+      };
+    });
   return (
     <>
       <div style={{ marginBottom: 9 }}><Label t={theme}>{tr.tokensByAgent}</Label></div>
@@ -617,6 +633,14 @@ function AgentsTab({ dash, theme, tr }: { dash: Dashboard; theme: Theme; tr: Dic
         <div style={{ font: `500 10.5px ${theme.mono}`, color: theme.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>
       ) : (
         agents.map((a, i) => <AgentRow key={i} a={a} max={max} theme={theme} share={shares[i]} />)
+      )}
+      {costAgents.length > 0 && (
+        <>
+          <SectionRule t={theme} m="10px 0 10px" />
+          <div style={{ marginBottom: 8 }}><Label t={theme}>{tr.costByAgent}</Label></div>
+          <CostDonut models={costAgents} theme={theme} size={100} thickness={15}
+            currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} />
+        </>
       )}
       <SectionRule t={theme} />
     </>
