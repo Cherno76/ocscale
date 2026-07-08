@@ -408,7 +408,11 @@ fn report_day(events: &[Event], now: DateTime<Local>) -> PeriodReport {
         .collect();
 
     let projects = aggregate_projects(&period_events);
-
+    debug_assert!(
+        (agg.models().iter().map(|m| m.cost).sum::<f64>()
+            - projects.iter().map(|p| p.cost).sum::<f64>()).abs() < 0.01,
+        "model cost sum != project cost sum"
+    );
     PeriodReport {
         metrics: agg.metrics(
             pct_delta(
@@ -483,7 +487,11 @@ fn report_week(events: &[Event], now: DateTime<Local>) -> PeriodReport {
         .collect();
 
     let projects = aggregate_projects(&period_events);
-
+    debug_assert!(
+        (agg.models().iter().map(|m| m.cost).sum::<f64>()
+            - projects.iter().map(|p| p.cost).sum::<f64>()).abs() < 0.01,
+        "model cost sum != project cost sum"
+    );
     PeriodReport {
         metrics: agg.metrics(
             pct_delta(
@@ -568,7 +576,11 @@ fn report_month(events: &[Event], now: DateTime<Local>) -> PeriodReport {
         .collect();
 
     let projects = aggregate_projects(&period_events);
-
+    debug_assert!(
+        (agg.models().iter().map(|m| m.cost).sum::<f64>()
+            - projects.iter().map(|p| p.cost).sum::<f64>()).abs() < 0.01,
+        "model cost sum != project cost sum"
+    );
     PeriodReport {
         metrics: agg.metrics(
             pct_delta(

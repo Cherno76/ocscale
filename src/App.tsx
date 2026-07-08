@@ -60,6 +60,25 @@ function Delta({ v, theme }: { v: number; theme: Theme }) {
 
 // Round each value's share to 1 decimal (%) via largest-remainder apportionment,
 // so the displayed percentages sum to exactly 100.0% (plain rounding wouldn't).
+function ProjectRow({ p, max, theme, share }: { p: ProjectStat; max: number; theme: Theme; share: number }) {
+  const pctStr = share % 1 === 0 ? share.toFixed(0) : share.toFixed(1);
+  const PALETTE = ["#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#4b5a52", "#a78bfa", "#e0795f", "#6ee7b7"];
+  const hash = p.projectId.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+  const color = PALETTE[hash % PALETTE.length];
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "5px 0" }}>
+      <span style={{ width: 7, height: 7, borderRadius: 2, background: color, flex: "0 0 auto" }} />
+      <div style={{ minWidth: 0, flex: "0 0 118px" }}>
+        <div style={{ font: `500 11.5px ${theme.ui}`, color: theme.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.projectName}</div>
+      </div>
+      <div style={{ flex: 1, height: 5, borderRadius: 3, background: theme.gridLine, overflow: "hidden" }}>
+        <div style={{ width: `${(p.tokens / max) * 100}%`, height: "100%", background: color, borderRadius: 3 }} />
+      </div>
+      <span style={{ font: `500 10.5px ${theme.mono}`, color: theme.dim, flex: "0 0 auto", width: 42, textAlign: "right" }}>{fmtTokens(p.tokens)}</span>
+      <span style={{ font: `600 10.5px ${theme.mono}`, color: theme.text, flex: "0 0 auto", width: 40, textAlign: "right" }}>{pctStr}%</span>
+    </div>
+  );
+}
 function sharePcts(values: number[]): number[] {
   const total = values.reduce((s, v) => s + v, 0);
   if (total <= 0) return values.map(() => 0);
@@ -281,6 +300,13 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
   const maxM = Math.max(...tokenModels.map((m) => m.tokens), 1e-9);
   // Per-row shares that sum to exactly 100.0% (largest-remainder over visible rows).
   const tokenShares = sharePcts(tokenModels.map((m) => m.tokens));
+
+  // Project token rows — same filtering and share logic as model rows.
+  const projectTokens = P.projects.filter(
+    (p) => Math.round((p.tokens / (M.totalTokens || 1)) * 1000) / 10 >= 0.1
+  );
+  const maxP = Math.max(...projectTokens.map((p) => p.tokens), 1e-9);
+  const projectShares = sharePcts(projectTokens.map((p) => p.tokens));
   const trendSub = { Day: tr.today24h, Week: tr.thisWeek, Month: tr.thisMonth }[period];
 
   // screenshot capture: rasterize the full panel card to a PNG and hand it to
@@ -416,16 +442,25 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
         {/* bar chart */}
         <BarChart data={P.series} theme={t} height={84} td={tr} />
         <SectionRule t={t} m="14px 0 10px" />
-        {/* models */}
-        <div style={{ marginBottom: 4 }}><Label t={t}>{tr.tokensByModel}</Label></div>
-        {tokenModels.length === 0 && <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
-        {tokenModels.map((m, i) => <ModelRow key={i} m={m} max={maxM} theme={t} share={tokenShares[i]} />)}
-        <SectionRule t={t} m="10px 0 10px" />
-        {/* cost donut — tabbed: model / project */}
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
-          <Label t={t}>{tr.costByModel}</Label>
+        {/* models / projects — tabbed */}
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
+          <Label t={t}>{costTab === "model" ? tr.tokensByModel : tr.byProject}</Label>
           <Segmented value={costTab} items={["Model", "Project"]} itemValues={["model", "project"]} theme={t} onSelect={(v) => setCostTab(v as "model" | "project")} />
         </div>
+        {costTab === "model" ? (
+          <>
+            {tokenModels.length === 0 && <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
+            {tokenModels.map((m, i) => <ModelRow key={i} m={m} max={maxM} theme={t} share={tokenShares[i]} />)}
+          </>
+        ) : (
+          <>
+            {projectTokens.length === 0 && <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
+            {projectTokens.map((p, i) => <ProjectRow key={i} p={p} max={maxP} theme={t} share={projectShares[i]} />)}
+          </>
+        )}
+        <SectionRule t={t} m="10px 0 10px" />
+        {/* cost donut — same tab */}
+        <div style={{ marginBottom: 8 }}><Label t={t}>{costTab === "model" ? tr.costByModel : tr.costByProject}</Label></div>
         {costTab === "model" ? (
           costModels.length > 0
             ? <CostDonut models={costModels} theme={t} size={100} thickness={15}

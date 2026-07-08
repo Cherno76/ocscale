@@ -35,6 +35,7 @@ const EN = {
   thisMonth: "this month",
   // Projects
   byProject: "By project",
+  costByProject: "Cost by project",
   sessionsCount: (n: number) => `${n} sessions`,
   // MCP
   mcpCalls: "MCP calls",
@@ -99,7 +100,8 @@ const ZH: Dict = {
   thisWeek: "本周",
   thisMonth: "本月",
   // Projects
-  byProject: "按项目",
+  byProject: "按项目统计TOKEN",
+  costByProject: "按项目统计费用",
   sessionsCount: (n: number) => `${n} 个会话`,
   // MCP
   mcpCalls: "MCP 调用",
