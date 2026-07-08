@@ -1,4 +1,4 @@
-# AGENTS.md — Tokenscope / OCScale
+# AGENTS.md — OCScale
 
 Menu-bar/tray app for monitoring OpenCode token usage. **Tauri 2 + React 18 (TS) + Rust**.
 
@@ -9,7 +9,7 @@ pnpm install                     # must use pnpm (pnpm 10 in CI)
 pnpm tauri dev                   # full app (requires Rust toolchain)
 pnpm dev                         # frontend-only preview at http://localhost:1420 (mock data)
 pnpm tauri build                 # production .app/.dmg (macOS) or .exe (Windows)
-cargo test -p tokenscope         # Rust unit tests (src-tauri/src/lib.rs inline)
+cargo test -p ocscale         # Rust unit tests (src-tauri/src/lib.rs inline)
 # regenerate dev mock snapshot:
 cargo run --example dump > public/dev-dashboard.json  # in src-tauri/
 ```
@@ -17,6 +17,17 @@ cargo run --example dump > public/dev-dashboard.json  # in src-tauri/
 - `pnpm build` runs `tsc && vite build` — typecheck comes first, then bundle.
 - `strictPort: true` on port 1420 — nothing else should bind that port.
 - There is **no lint/formatter config** (no ESLint, Prettier, or pre-commit hooks).
+
+## Versioning
+
+Version is `MAJOR.MINOR.PATCH` starting at `0.1.0`. Every code change bumps `PATCH` by 1. After `0.1.9` comes `0.2.0` (patch wraps to 0, minor +1). After `0.9.9` comes `1.0.0`.
+
+Three files must be updated together:
+- `package.json` (top-level `"version"`)
+- `src-tauri/tauri.conf.json` (`"version"`)
+- `src-tauri/Cargo.toml` (`version`)
+
+The frontend reads version dynamically via the `get_version` Tauri command (reads `CARGO_PKG_VERSION` at compile time).
 
 ## Architecture
 
@@ -41,14 +52,14 @@ App.tsx + charts.tsx (React, custom SVG charts — no chart library)
 ## Data sources & pricing
 
 - **Primary**: OpenCode SQLite database at `$XDG_DATA_HOME/opencode/opencode.db` or `~/.local/share/opencode/opencode.db`.
-- **Pricing**: models.dev API → LiteLLM → built-in snapshot (`src-tauri/snapshots/litellm.json`). Cached at `~/Library/Caches/tokenscope/` (macOS) / platform cache dir, refreshed every 24h.
+- **Pricing**: models.dev API → LiteLLM → built-in snapshot (`src-tauri/snapshots/litellm.json`). Cached at `~/Library/Caches/ocscale/` (macOS) / platform cache dir, refreshed every 24h.
 - **MCP/Skill tracking**: NOT YET IMPLEMENTED for OpenCode. `config.rs` returns empty whitelists. The `mcp`/`skills` fields in `RawEvent` are always empty. User config reading from OpenCode config is future work.
 - Price matching: exact model name → normalized (strip vendor prefix after `/`, `.`↔`p`). Unmatched models still count tokens but show "no price" label.
 - OpenCode's per-message `cost` field is used as a fallback when the pricing module doesn't recognise a model.
 
 ## Key gotchas
 
-- **`tauri.conf.json` productName is `"OCScale"`**, but npm package name is `tokenscope`, identifier is `com.tokenscope.app`. Be careful not to rename one without the others. The tray tooltip also says "OCScale".
+- **`tauri.conf.json` productName is `"OCScale"`**, npm package name is `ocscale`, identifier is `com.ocscale.app`. Be careful not to rename one without the others.
 - **`tauri-nspanel`** is a macOS-only git dependency (`ahkohd/tauri-nspanel` branch `v2`). Any code importing it must be `#[cfg(target_os = "macos")]`. It uses the deprecated `objc` crate — the `allow(deprecated)` in `lib.rs:2` is intentional.
 - **`macos-private-api`** Tauri feature is enabled for tray operations.
 - **macOS tray label**: shown next to the icon via `set_title()`. **Windows**: tray has no label — uses `set_tooltip()` instead. Both must be updated together.
@@ -67,13 +78,13 @@ App.tsx + charts.tsx (React, custom SVG charts — no chart library)
 - **Fonts**: IBM Plex Sans, IBM Plex Mono, Space Grotesk — loaded from Google Fonts in `index.html`.
 - **Scrollbars hidden**: `.om-scroll` class disables scrollbars globally. The panel is non-resizable (400×660 fixed).
 - **Count-up animation**: `useCountUp` hook with `useLayoutEffect` reset-to-0 before counting up. `resetKey` tracks popover open + period switch.
-- **Confetti celebration**: triggers at every 100M token milestone (per week/month). Milestones persisted in `~/Library/Application Support/tokenscope/milestones.json` (data dir, not cache — survives purges).
+- **Confetti celebration**: triggers at every 100M token milestone (per week/month). Milestones persisted in `~/Library/Application Support/ocscale/milestones.json` (data dir, not cache — survives purges).
 - **Screenshot**: `domToPng` (modern-screenshot) captures the panel to Desktop — bypasses macOS Screen Recording permission.
 - **Launch-at-login**: managed via `tauri-plugin-autostart` with a persisted preference (data dir). First run defaults to on.
 
 ## Tests
 
-- **Rust**: `cargo test -p tokenscope` — unit tests inline in `src-tauri/src/lib.rs` (milestone logic, `fmt_tokens_m`).
+- **Rust**: `cargo test -p ocscale` — unit tests inline in `src-tauri/src/lib.rs` (milestone logic, `fmt_tokens_m`).
 - **Frontend**: no tests. No test framework configured.
 - No CI test step — the release workflow only builds.
 

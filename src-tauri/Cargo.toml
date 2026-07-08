@@ -1,12 +1,12 @@
 [package]
-name = "tokenscope"
-version = "1.0.4"
+name = "ocscale"
+version = "0.1.0"
 description = "OpenCode token usage dashboard"
 authors = ["you"]
 edition = "2021"
 
 [lib]
-name = "tokenscope_lib"
+name = "ocscale_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

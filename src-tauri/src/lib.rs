@@ -47,7 +47,11 @@ fn refresh(app: &tauri::AppHandle) {
         // surface the same number through the hover tooltip instead, the only
         // text channel Shell_NotifyIcon exposes for a tray icon.
         let _ = tray.set_title(Some(label.clone()));
-        let _ = tray.set_tooltip(Some(format!("OCScale · today {}", label)));
+        let _ = tray.set_tooltip(Some(format!(
+            "OCScale v{} · today {}",
+            env!("CARGO_PKG_VERSION"),
+            label
+        )));
     }
     check_milestones(app, &dash);
     let _ = app.emit("dashboard-updated", &dash);
@@ -74,11 +78,11 @@ struct Celebration {
     active: AtomicBool,
 }
 
-/// `~/Library/Application Support/tokenscope/milestones.json` (platform
+/// `~/Library/Application Support/ocscale/milestones.json` (platform
 /// equivalent elsewhere). Deliberately the data dir, not the Caches dir the
 /// event store uses — Caches can be purged by the OS, milestones must not be.
 fn milestones_path() -> Option<std::path::PathBuf> {
-    let dir = dirs::data_dir()?.join("tokenscope");
+    let dir = dirs::data_dir()?.join("ocscale");
     let _ = std::fs::create_dir_all(&dir);
     Some(dir.join("milestones.json"))
 }
@@ -102,7 +106,7 @@ fn save_milestones(m: &MilestoneState) {
 // the OS registration to this preference rather than force-enabling every
 // launch (which silently undid a user who had turned autostart off).
 fn autostart_pref_path() -> Option<std::path::PathBuf> {
-    let dir = dirs::data_dir()?.join("tokenscope");
+    let dir = dirs::data_dir()?.join("ocscale");
     let _ = std::fs::create_dir_all(&dir);
     Some(dir.join("autostart.json"))
 }
@@ -410,7 +414,7 @@ fn position_panel(app: &tauri::AppHandle) {
 // does not persist a position.
 #[cfg(not(target_os = "macos"))]
 fn popover_pos_path() -> Option<std::path::PathBuf> {
-    let dir = dirs::data_dir()?.join("tokenscope");
+    let dir = dirs::data_dir()?.join("ocscale");
     let _ = std::fs::create_dir_all(&dir);
     Some(dir.join("popover_pos.json"))
 }
@@ -640,7 +644,11 @@ async fn get_dashboard(app: tauri::AppHandle) -> Dashboard {
         let _ = tray.set_title(Some(label.clone()));
         // Mirror refresh(): keep the tooltip in sync for Windows, where the
         // title isn't shown next to the icon.
-        let _ = tray.set_tooltip(Some(format!("OCScale · today {}", label)));
+        let _ = tray.set_tooltip(Some(format!(
+            "OCScale v{} · today {}",
+            env!("CARGO_PKG_VERSION"),
+            label
+        )));
     }
     check_milestones(&app, &dash);
     dash
@@ -699,6 +707,11 @@ async fn set_autostart(app: tauri::AppHandle, on: bool) -> Result<bool, String> 
     Ok(now_on)
 }
 
+#[tauri::command]
+fn get_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
 fn fmt_tokens_m(m: f64) -> String {
     if m >= 1.0 {
         format!("{:.2}M", m)
@@ -740,7 +753,7 @@ pub fn run() {
     }
 
     builder
-        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag, get_autostart, set_autostart, quit_app])
+        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag, get_autostart, set_autostart, quit_app, get_version])
         .setup(move |app| {
             // Menu-bar–only app: no Dock icon, runs in the background.
             #[cfg(target_os = "macos")]
@@ -876,7 +889,11 @@ pub fn run() {
                 .icon(tauri::include_image!("icons/tray-icon.png"))
                 .icon_as_template(false)
                 .title(&label)
-                .tooltip(format!("OCScale · today {}", label))
+                .tooltip(format!(
+                    "OCScale v{} · today {}",
+                    env!("CARGO_PKG_VERSION"),
+                    label
+                ))
                 .on_tray_icon_event(move |tray, event| {
                     let app = tray.app_handle();
                     // Cache tray icon rect for panel positioning below the icon.

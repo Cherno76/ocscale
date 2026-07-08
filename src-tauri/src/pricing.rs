@@ -55,7 +55,7 @@ fn bare(s: &str) -> &str {
 }
 
 fn cache_dir() -> Option<PathBuf> {
-    let dir = dirs::cache_dir()?.join("tokenscope");
+    let dir = dirs::cache_dir()?.join("ocscale");
     let _ = fs::create_dir_all(&dir);
     Some(dir)
 }

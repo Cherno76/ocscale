@@ -203,8 +203,8 @@ function ScreenshotButton({ theme, busy, onClick, td }: { theme: Theme; busy: bo
   );
 }
 
-function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, toggleLang, onRefresh }:
-  { dash: Dashboard; dark: boolean; themePref: "dark" | "light" | "system"; onToggleTheme: () => void; openGen: number; active: boolean; lang: Lang; toggleLang: () => void; onRefresh: () => void }) {
+function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, toggleLang, onRefresh, version }:
+  { dash: Dashboard; dark: boolean; themePref: "dark" | "light" | "system"; onToggleTheme: () => void; openGen: number; active: boolean; lang: Lang; toggleLang: () => void; onRefresh: () => void; version: string }) {
   const t = TH[dark ? "dark" : "light"];
   const { t: tr } = useT();
   const periodItems = [tr.day, tr.week, tr.month];
@@ -316,7 +316,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
       } else {
         const a = document.createElement("a");
         a.href = dataUrl;
-        a.download = "tokenscope.png";
+        a.download = "ocscale.png";
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -511,8 +511,10 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
             {tr.quit}
           </button>
         </div>
-
-        </div>{/* /scrolling body */}
+        <div style={{ marginTop: 10, textAlign: "center", font: `500 9px ${t.ui}`, color: t.faint }}>
+          OCScale v{version || "dev"} · © 2026
+        </div>
+      </div>{/* /scrolling body */}
       </div>
       {toast && (
         <div className="om-toast" style={{
@@ -532,18 +534,19 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
 
 export default function App() {
   const [curLang, setCurLang] = useState<Lang>(() => {
-    const saved = typeof localStorage !== "undefined" ? localStorage.getItem("tokenscope-lang") : null;
+    const saved = typeof localStorage !== "undefined" ? localStorage.getItem("ocscale-lang") : null;
     return saved === "zh" ? "zh" : "en";
   });
   const toggleLang = () =>
     setCurLang((p) => {
       const n = p === "en" ? "zh" : "en";
-      try { localStorage.setItem("tokenscope-lang", n); } catch {}
+      try { localStorage.setItem("ocscale-lang", n); } catch {}
       return n;
     });
   const tr = DICT[curLang];
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [version, setVersion] = useState("");
   const applyDash = (d: Dashboard) => { setDash(d); setErr(null); };
   const [openGen, setOpenGen] = useState(0);
   const [focused, setFocused] = useState(true); // browser preview: always "focused"
@@ -551,7 +554,7 @@ export default function App() {
   // appearance live on both macOS and Windows via prefers-color-scheme). First
   // run defaults to System.
   const [themePref, setThemePref] = useState<"dark" | "light" | "system">(() => {
-    const saved = typeof localStorage !== "undefined" ? localStorage.getItem("tokenscope-theme") : null;
+    const saved = typeof localStorage !== "undefined" ? localStorage.getItem("ocscale-theme") : null;
     if (saved === "dark" || saved === "light" || saved === "system") return saved;
     return "system";
   });
@@ -572,7 +575,7 @@ export default function App() {
   const cycleTheme = () =>
     setThemePref((p) => {
       const n = p === "dark" ? "light" : p === "light" ? "system" : "dark";
-      try { localStorage.setItem("tokenscope-theme", n); } catch {}
+      try { localStorage.setItem("ocscale-theme", n); } catch {}
       return n;
     });
 
@@ -581,7 +584,13 @@ export default function App() {
     fetchDashboard().then(applyDash).catch((e) => setErr(String(e)));
 
     const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+    if (inTauri) {
+      invoke<string>("get_version").then(setVersion).catch(() => {});
+    } else {
+      setVersion("dev");
+    }
     if (!inTauri) return;
+
     // Under StrictMode the effect mounts → cleans up → remounts; the async
     // listen()/onFocusChanged() promises can resolve after the first cleanup,
     // so unregister any late arrival immediately instead of leaking a duplicate.
@@ -657,6 +666,7 @@ export default function App() {
           </div>
         : <Panel dash={dash} dark={dark} themePref={themePref} onToggleTheme={cycleTheme}
             openGen={openGen} active={focused} lang={curLang} toggleLang={toggleLang}
+            version={version}
             onRefresh={() => fetchDashboard().then(applyDash)} />}
     </I18nContext.Provider>
   );
