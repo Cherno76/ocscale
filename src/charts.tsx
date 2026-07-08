@@ -142,15 +142,20 @@ export function Sparkline({ values, theme, width = 80, height = 24, accent, stro
 const DONUT_PALETTE = ["#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#4b5a52"];
 const DONUT_OVERFLOW = "#79817b";
 
-export function CostDonut({ models, theme, size = 104, thickness = 16, currencySymbol = "$", exchangeRate = 1 }:
-  { models: ModelStat[]; theme: Theme; size?: number; thickness?: number; currencySymbol?: string; exchangeRate?: number }) {
+export function CostDonut({ models, theme, size = 104, thickness = 16, currencySymbol = "$", exchangeRate = 1,
+  preserveColors,
+}: { models: ModelStat[]; theme: Theme; size?: number; thickness?: number; currencySymbol?: string; exchangeRate?: number;
+  preserveColors?: boolean }) {
   const t = theme;
   const [hi, setHi] = useState(-1);
-  // Rank by cost (desc) and recolor by that rank — usage from most to least.
-  const ranked = [...models]
-    .sort((a, b) => b.cost - a.cost)
-    .map((m, i) => ({ ...m, color: i < DONUT_PALETTE.length ? DONUT_PALETTE[i] : DONUT_OVERFLOW }));
-  models = ranked;
+  // When preserveColors is set, keep the caller's colors as-is (e.g. agent-tab
+  // colour consistency with the token bar). Otherwise rank by cost and recolour.
+  if (!preserveColors) {
+    const ranked = [...models]
+      .sort((a, b) => b.cost - a.cost)
+      .map((m, i) => ({ ...m, color: i < DONUT_PALETTE.length ? DONUT_PALETTE[i] : DONUT_OVERFLOW }));
+    models = ranked;
+  }
   const total = models.reduce((s, m) => s + m.cost, 0) || 1e-9;
   const cx = size / 2, cy = size / 2;
   const rOut = (size - 2) / 2, rIn = rOut - thickness;

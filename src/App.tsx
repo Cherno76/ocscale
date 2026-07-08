@@ -638,7 +638,8 @@ function AgentsTab({ dash, theme, tr }: { dash: Dashboard; theme: Theme; tr: Dic
           <SectionRule t={theme} m="10px 0 10px" />
           <div style={{ marginBottom: 8 }}><Label t={theme}>{tr.costByAgent}</Label></div>
           <CostDonut models={costAgents} theme={theme} size={100} thickness={15}
-            currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} />
+            currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate}
+            preserveColors />
         </>
       )}
       <SectionRule t={theme} />
