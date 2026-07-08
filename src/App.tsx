@@ -128,11 +128,12 @@ function MiniStat({ label, value, sub, theme, accent, children }:
 
 // Cached/Rest legend: full words by default, abbreviated when the row would
 // otherwise overflow. Mirrors the split bar above (dark = cached, light = rest).
-function SplitLegend({ t, tr, cacheM, restM, cachedPct }:
-  { t: Theme; tr: Dict; cacheM: number; restM: number; cachedPct: number }) {
+// When reasoning tokens are present, they appear inline before the cache split.
+function SplitLegend({ t, tr, cacheM, restM, cachedPct, reasoningM }:
+  { t: Theme; tr: Dict; cacheM: number; restM: number; cachedPct: number; reasoningM?: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const [compact, setCompact] = useState(false);
-  const key = `${cacheM}|${restM}|${cachedPct}`;
+  const key = `${reasoningM ?? 0}|${cacheM}|${restM}|${cachedPct}`;
   // reset to full labels whenever the numbers change, then re-measure
   useLayoutEffect(() => { setCompact(false); }, [key]);
   useLayoutEffect(() => {
@@ -144,6 +145,9 @@ function SplitLegend({ t, tr, cacheM, restM, cachedPct }:
       display: "flex", alignItems: "center", gap: 14,
       font: `500 10px ${t.mono}`, color: t.dim, marginBottom: 14, whiteSpace: "nowrap", overflow: "hidden",
     }}>
+      {reasoningM !== undefined && reasoningM > 0 && (
+        <span><span style={{ color: t.reasoningCol }}>●</span> {tr.reasoning} {reasoningM.toFixed(2)}M</span>
+      )}
       <span><span style={{ color: t.accent }}>●</span> {tr.cached} {cacheM.toFixed(2)}M</span>
       <span><span style={{ color: t.accentSoft }}>●</span> {tr.new_} {restM.toFixed(2)}M</span>
       <span style={{ color: t.faint }}>{cachedPct}{tr.pctCached}</span>
@@ -438,13 +442,6 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
             <div style={{ font: `600 18px ${t.mono}`, color: t.accent, marginTop: 2 }}>{tr.currencySymbol}{(M.cost * tr.exchangeRate).toFixed(2)}</div>
           </div>
         </div>
-        {M.reasoningTokens > 0 && (
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 5 }}>
-            <div style={{ width: 8, height: 8, borderRadius: 2, background: t.reasoningCol }} />
-            <span style={{ font: `500 10px ${t.ui}`, color: t.dim }}>{tr.reasoning}</span>
-            <span style={{ font: `600 10.5px ${t.mono}`, color: t.text }}>{fmtTokens(M.reasoningTokens)}</span>
-          </div>
-        )}
         {/* cached vs rest (uncached input + output) — 2-colour pill. Dark segment
             is the cache share, matching the "% cached" label below. */}
         <div style={{ display: "flex", height: 7, borderRadius: 4, overflow: "hidden", marginBottom: 5, background: t.gridLine }}>
@@ -453,7 +450,9 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
             <div style={{ width: `${restPct}%`, background: t.accentSoft }} />
           </>}
         </div>
-        <SplitLegend t={t} tr={tr} cacheM={M.cacheTokens} restM={M.inputTokens + M.outputTokens} cachedPct={pct(M.cacheTokens, M.totalTokens)} />
+        <SplitLegend t={t} tr={tr} cacheM={M.cacheTokens} restM={M.inputTokens + M.outputTokens}
+          cachedPct={pct(M.cacheTokens, M.totalTokens)}
+          reasoningM={M.reasoningTokens > 0 ? M.reasoningTokens : undefined} />
         {/* bar chart */}
         <BarChart data={P.series} theme={t} height={84} td={tr} />
         <SectionRule t={t} m="14px 0 10px" />
