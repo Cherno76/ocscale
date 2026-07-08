@@ -8,12 +8,15 @@ import { DICT, type Dict } from "./i18n";
 export function TokenGlyph({ color = "#3b82f6", size = 14 }: { color?: string; size?: number }) {
   const s = size;
   const cx = s / 2, cy = s / 2;
-  const r = s * 0.38;        // ring radius
-  const sw = s * 0.16;       // stroke width
-  const C = 2 * Math.PI * r; // circumference
-  const arc = C / 6;         // 60° arc (2→4 o'clock = 1/6 circle)
+  // Match tray-icon.png proportions: outer_r = 28/64*s, inner_r = 14/64*s
+  const outerR = s * (28 / 64);   // outer edge
+  const innerR = s * (14 / 64);   // inner edge (hole)
+  const r = (outerR + innerR) / 2;  // stroke centre
+  const sw = outerR - innerR;       // stroke width
+  const C = 2 * Math.PI * r;
+  const arc = C / 6;              // 60° (2→4 o'clock)
   const gap = C - arc;
-  const offset = C / 12;     // 30° shift so arc starts at 2 o'clock
+  const offset = C / 12;          // 30° shift → starts at 2 o'clock
   return (
     <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
       <circle cx={cx} cy={cy} r={r} fill="none" stroke="#93c5fd" strokeWidth={sw} />
