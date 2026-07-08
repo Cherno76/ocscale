@@ -6,12 +6,20 @@ import {
 import { DICT, type Dict } from "./i18n";
 
 export function TokenGlyph({ color = "#3b82f6", size = 14 }: { color?: string; size?: number }) {
+  const s = size;
+  const cx = s / 2, cy = s / 2;
+  const r = s * 0.38;        // ring radius
+  const sw = s * 0.16;       // stroke width
+  const C = 2 * Math.PI * r; // circumference
+  const arc = C / 6;         // 60° arc (2→4 o'clock = 1/6 circle)
+  const gap = C - arc;
+  const offset = C / 12;     // 30° shift so arc starts at 2 o'clock
   return (
-    <svg width={size} height={size} viewBox="0 0 14 14">
-      <rect x="0.6" y="0.6" width="12.8" height="12.8" rx="3.2" fill="none" stroke={color} strokeWidth="1.3" />
-      <rect x="3" y="7.5" width="1.7" height="3.2" rx="0.6" fill={color} />
-      <rect x="6.15" y="5" width="1.7" height="5.7" rx="0.6" fill={color} />
-      <rect x="9.3" y="3" width="1.7" height="7.7" rx="0.6" fill={color} />
+    <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#93c5fd" strokeWidth={sw} />
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={sw}
+        strokeDasharray={`${arc} ${gap}`} strokeDashoffset={offset}
+        strokeLinecap="round" />
     </svg>
   );
 }
