@@ -1,6 +1,6 @@
 import { useId, useRef, useState } from "react";
 import {
-  Theme, ModelStat, NamedCount, SeriesPoint, HeatDay,
+  Theme, ModelStat, NamedCount, SeriesPoint, HeatDay, ProjectStat,
   fmtInt, fmtMoney, fmtTokens, linePath, fmtHeatDate,
 } from "./data";
 import { DICT, type Dict } from "./i18n";
@@ -41,7 +41,7 @@ export function BarChart({ data, theme, height = 96, accent, accentSoft, radius 
   const t = theme;
   const loc = td || DICT.en;
   accent = accent || t.accent; accentSoft = accentSoft || t.accentSoft;
-  const max = Math.max(...data.map((d) => d.input + d.cache + d.output), 1e-9);
+  const max = Math.max(...data.map((d) => d.input + d.cache + d.output + d.reasoning), 1e-9);
   const n = data.length;
   const gapPct = Math.max(0.8, Math.min(6, 32 / n));
   const effRadius = n > 16 ? 1 : radius;
@@ -52,7 +52,7 @@ export function BarChart({ data, theme, height = 96, accent, accentSoft, radius 
   // column top, so short bars don't push the tooltip up over the legend above.
   const onBar = (d: SeriesPoint, e: React.MouseEvent) => {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const barPx = ((d.input + d.cache + d.output) / max) * height;
+    const barPx = ((d.input + d.cache + d.output + d.reasoning) / max) * height;
     setHi(d); setTip({ x: r.left + r.width / 2, y: r.bottom - barPx });
   };
   return (
@@ -62,16 +62,19 @@ export function BarChart({ data, theme, height = 96, accent, accentSoft, radius 
           <div key={i} style={{ position: "absolute", left: 0, right: 0, bottom: `${g * 100}%`, borderTop: `1px solid ${t.gridLine}` }} />
         ))}
         {data.map((d, i) => {
-          // stacked top→bottom: output · input(+cache)
-          const hO = (d.output / max) * height, hI = ((d.input + d.cache) / max) * height;
-          const empty = d.input + d.cache + d.output <= 0;
+          // stacked top→bottom: reasoning · output · input(+cache)
+          const hR = (d.reasoning / max) * height;
+          const hO = (d.output / max) * height;
+          const hI = ((d.input + d.cache) / max) * height;
+          const empty = d.input + d.cache + d.output + d.reasoning <= 0;
           const on = hi === d;
           return (
             <div key={i}
               onMouseEnter={empty ? undefined : (e) => onBar(d, e)}
               onMouseLeave={empty ? undefined : () => setHi(null)}
               style={{ flex: 1, alignSelf: "stretch", display: "flex", flexDirection: "column", justifyContent: "flex-end", position: "relative", zIndex: 1, cursor: "default", opacity: hi && !on && !empty ? 0.55 : 1, transition: "opacity .12s" }}>
-              <div style={{ height: hO, background: accentSoft, borderRadius: `${effRadius}px ${effRadius}px 0 0` }} />
+              <div style={{ height: hR, background: t.reasoningCol, borderRadius: `${effRadius}px ${effRadius}px 0 0` }} />
+              <div style={{ height: hO, background: accentSoft }} />
               <div style={{ height: hI, background: accent }} />
             </div>
           );
@@ -91,7 +94,7 @@ export function BarChart({ data, theme, height = 96, accent, accentSoft, radius 
           font: `500 10px ${t.mono}`, whiteSpace: "nowrap", pointerEvents: "none", zIndex: 9999,
           boxShadow: "0 4px 14px rgba(0,0,0,0.35)" }}>
           <span style={{ color: accent, fontWeight: 600 }}>
-            {(() => { const tot = hi.input + hi.cache + hi.output; return tot === 0 ? loc.noTokens : loc.tokensLabel(fmtTokens(tot)); })()}
+            {(() => { const tot = hi.input + hi.cache + hi.output + hi.reasoning; return tot === 0 ? loc.noTokens : loc.tokensLabel(fmtTokens(tot)); })()}
           </span>
           <span style={{ opacity: 0.7 }}> · {hi.full}</span>
         </div>
@@ -229,6 +232,42 @@ export function BarList({ items, theme, accent, limit = 5, td }:
             <div style={{ width: `${(it.count / max) * 100}%`, height: "100%", background: accent, borderRadius: 3 }} />
           </div>
           <span style={{ font: `600 10.5px ${t.mono}`, color: t.dim, flex: "0 0 auto", minWidth: 30, textAlign: "right" }}>{fmtInt(it.count)}</span>
+        </div>
+      ))}
+      {more > 0 && (
+        <div onClick={() => setOpen(true)} style={{ font: `500 9.5px ${t.ui}`, color: t.faint, paddingTop: 4, cursor: "pointer", userSelect: "none" }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = t.dim)} onMouseLeave={(e) => (e.currentTarget.style.color = t.faint)}>
+          {loc.nMore(more)}
+        </div>
+      )}
+      {open && items.length > limit && (
+        <div onClick={() => setOpen(false)} style={{ font: `500 9.5px ${t.ui}`, color: t.faint, paddingTop: 4, cursor: "pointer", userSelect: "none" }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = t.dim)} onMouseLeave={(e) => (e.currentTarget.style.color = t.faint)}>
+          {loc.showLess}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ProjectBarList({ items, theme, accent, limit = 5, td }:
+  { items: ProjectStat[]; theme: Theme; accent?: string; limit?: number; td?: Dict }) {
+  const t = theme; accent = accent || t.accent;
+  const loc = td || DICT.en;
+  const [open, setOpen] = useState(false);
+  const shown = items.slice(0, open ? items.length : limit);
+  const max = items.reduce((m, i) => Math.max(m, i.tokens), 0) || 1;
+  const more = items.length - shown.length;
+  return (
+    <div>
+      {shown.map((it, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 9, padding: "3px 0" }}>
+          <span style={{ font: `500 10.5px ${t.mono}`, color: t.text, flex: "0 0 134px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.projectName}</span>
+          <div style={{ flex: 1, height: 5, borderRadius: 3, background: t.gridLine, overflow: "hidden" }}>
+            <div style={{ width: `${(it.tokens / max) * 100}%`, height: "100%", background: accent, borderRadius: 3 }} />
+          </div>
+          <span style={{ font: `600 10.5px ${t.mono}`, color: t.dim, flex: "0 0 auto", minWidth: 30, textAlign: "right" }}>{fmtTokens(it.tokens)}</span>
+          <span style={{ font: `500 8.5px ${t.ui}`, color: t.faint, background: t.gridLine, borderRadius: 4, padding: "1px 5px", lineHeight: "16px", whiteSpace: "nowrap" }}>{loc.sessionsCount(it.sessions)}</span>
         </div>
       ))}
       {more > 0 && (

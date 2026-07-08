@@ -274,6 +274,7 @@ impl Pricing {
     }
 
     /// Exact-or-normalized cost in USD. None = no pricing data for this model.
+    /// Reasoning tokens are priced at the output rate.
     pub fn cost(
         &self,
         model: &str,
@@ -281,13 +282,15 @@ impl Pricing {
         output: f64,
         cache_create: f64,
         cache_read: f64,
+        reasoning: f64,
     ) -> Option<f64> {
         let p = self.lookup(model)?;
         Some(
             input * p.input
                 + output * p.output
                 + cache_create * p.cache_create
-                + cache_read * p.cache_read,
+                + cache_read * p.cache_read
+                + reasoning * p.output,
         )
     }
 

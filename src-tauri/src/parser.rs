@@ -23,10 +23,14 @@ struct Event {
     input: f64,  // raw tokens, uncached new input only
     cache: f64,  // raw tokens, cache creation + read
     output: f64, // raw tokens
+    reasoning: f64, // reasoning tokens
     cost: f64,   // USD (differentiated by token type), 0 if unknown model
     priced: bool, // whether a price was found for this model
+    cost_source: String, // "pricing", "opencode", or "none"
     mcp: Vec<String>,   // user-installed server names called in this msg
     skills: Vec<String>, // user-installed skill names called in this msg
+    project_id: String,
+    project_name: String,
 }
 
 // Top-5 models keep the blue/slate scheme; everything beyond is uniform gray.
@@ -118,7 +122,7 @@ pub fn build_dashboard() -> Dashboard {
     let today_tokens: f64 = events
         .iter()
         .filter(|e| e.ts.date_naive() == today)
-        .map(|e| (e.input + e.cache + e.output) / 1e6)
+        .map(|e| (e.input + e.cache + e.output + e.reasoning) / 1e6)
         .sum();
 
     Dashboard {
@@ -141,11 +145,19 @@ fn compute_event(r: &RawEvent, cfg: &UserConfig, pricing: &Pricing) -> Event {
         .with_timezone(&Local);
     let model = normalize_model(&r.model);
     // price lookup uses the raw (possibly dated) id, then the normalized one,
-    // then finally falls back to OpenCode's own cost calculation
-    let cost_opt = pricing
-        .cost(&r.model, r.in_tok, r.out_tok, r.cc, r.cr)
-        .or_else(|| pricing.cost(&model, r.in_tok, r.out_tok, r.cc, r.cr))
-        .or_else(|| r.stored_cost);
+    // then finally falls back to OpenCode's own cost calculation.
+    // Track which source produced the cost value.
+    let (cost_opt, cost_source) = if let Some(c) = pricing
+        .cost(&r.model, r.in_tok, r.out_tok, r.cc, r.cr, r.reasoning)
+    {
+        (Some(c), "pricing")
+    } else if let Some(c) = pricing.cost(&model, r.in_tok, r.out_tok, r.cc, r.cr, r.reasoning) {
+        (Some(c), "pricing")
+    } else if let Some(c) = r.stored_cost {
+        (Some(c), "opencode")
+    } else {
+        (None, "none")
+    };
     let mcp = r
         .mcp
         .iter()
@@ -165,10 +177,14 @@ fn compute_event(r: &RawEvent, cfg: &UserConfig, pricing: &Pricing) -> Event {
         input: r.in_tok,
         cache: r.cc + r.cr,
         output: r.out_tok,
+        reasoning: r.reasoning,
         cost: cost_opt.unwrap_or(0.0),
         priced: cost_opt.is_some(),
+        cost_source: cost_source.to_string(),
         mcp,
         skills,
+        project_id: r.project_id.clone(),
+        project_name: r.project_name.clone(),
     }
 }
 
@@ -178,6 +194,7 @@ struct Agg {
     input: f64,
     cache: f64,
     output: f64,
+    reasoning: f64,
     cost: f64,
     requests: u64,
     sessions: HashSet<String>,
@@ -186,6 +203,7 @@ struct Agg {
     model_tok: HashMap<String, f64>,
     model_cost: HashMap<String, f64>,
     model_priced: HashMap<String, bool>,
+    model_cost_source: HashMap<String, String>,
     mcp_counts: HashMap<String, u64>,
     skill_counts: HashMap<String, u64>,
 }
@@ -195,6 +213,7 @@ impl Agg {
         self.input += e.input;
         self.cache += e.cache;
         self.output += e.output;
+        self.reasoning += e.reasoning;
         self.cost += e.cost;
         if !e.session.is_empty() {
             self.sessions.insert(e.session.clone());
@@ -204,10 +223,17 @@ impl Agg {
         if !e.model.is_empty() {
             self.requests += 1; // each RawEvent is one assistant message
             // model totals keep all token types so shares sum to Total tokens
-            *self.model_tok.entry(e.model.clone()).or_default() += e.input + e.cache + e.output;
+            *self.model_tok.entry(e.model.clone()).or_default() += e.input + e.cache + e.output + e.reasoning;
             *self.model_cost.entry(e.model.clone()).or_default() += e.cost;
             // a model is "priced" if any of its messages had a known price
             *self.model_priced.entry(e.model.clone()).or_default() |= e.priced;
+            // track cost_source per model: "pricing" > "opencode" > "none"
+            let cs = self.model_cost_source.entry(e.model.clone()).or_insert_with(|| "none".to_string());
+            if e.cost_source == "pricing" {
+                *cs = "pricing".to_string();
+            } else if e.cost_source == "opencode" && cs.as_str() != "pricing" {
+                *cs = "opencode".to_string();
+            }
         }
         for s in &e.mcp {
             self.mcp_calls += 1;
@@ -230,12 +256,16 @@ impl Agg {
             .enumerate()
             .map(|(i, (name, tok, cost))| {
                 let priced = *self.model_priced.get(&name).unwrap_or(&false);
+                let cost_source = self.model_cost_source.get(&name)
+                    .cloned()
+                    .unwrap_or_else(|| "none".to_string());
                 ModelStat {
                     vendor: vendor_of(&name).to_string(),
                     tokens: (tok / 1e6 * 100.0).round() / 100.0,
                     cost: (cost * 100.0).round() / 100.0,
                     color: if i < PALETTE.len() { PALETTE[i] } else { OVERFLOW_GRAY }.to_string(),
                     priced,
+                    cost_source,
                     name,
                 }
             })
@@ -256,10 +286,11 @@ impl Agg {
 
     fn metrics(&self, delta_tokens: f64, delta_cost: f64) -> Metrics {
         Metrics {
-            total_tokens: ((self.input + self.cache + self.output) / 1e6 * 100.0).round() / 100.0,
+            total_tokens: ((self.input + self.cache + self.output + self.reasoning) / 1e6 * 100.0).round() / 100.0,
             input_tokens: (self.input / 1e6 * 100.0).round() / 100.0,
             cache_tokens: (self.cache / 1e6 * 100.0).round() / 100.0,
             output_tokens: (self.output / 1e6 * 100.0).round() / 100.0,
+            reasoning_tokens: (self.reasoning / 1e6 * 100.0).round() / 100.0,
             cost: (self.cost * 100.0).round() / 100.0,
             mcp_calls: self.mcp_calls,
             skill_calls: self.skill_calls,
@@ -282,24 +313,72 @@ fn pct_delta(cur: f64, prev: f64) -> f64 {
     ((cur - prev) / prev * 10000.0).round() / 100.0
 }
 
+/// Aggregate project statistics from a slice of events (for a specific time period).
+fn aggregate_projects(events: &[&Event]) -> Vec<ProjectStat> {
+    let mut proj_tokens: HashMap<String, f64> = HashMap::new();
+    let mut proj_cost: HashMap<String, f64> = HashMap::new();
+    let mut proj_sessions: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut proj_name: HashMap<String, String> = HashMap::new();
+
+    for e in events {
+        let pid = if e.project_id.is_empty() {
+            "global".to_string()
+        } else {
+            e.project_id.clone()
+        };
+        let pname = if e.project_name.is_empty() {
+            "Global".to_string()
+        } else {
+            e.project_name.clone()
+        };
+        *proj_tokens.entry(pid.clone()).or_default() += (e.input + e.cache + e.output + e.reasoning) / 1e6;
+        *proj_cost.entry(pid.clone()).or_default() += e.cost;
+        proj_sessions
+            .entry(pid.clone())
+            .or_default()
+            .insert(e.session.clone());
+        proj_name.entry(pid.clone()).or_insert(pname);
+    }
+
+    let mut projects: Vec<ProjectStat> = proj_tokens
+        .iter()
+        .map(|(pid, tokens)| ProjectStat {
+            project_id: pid.clone(),
+            project_name: proj_name.get(pid).cloned().unwrap_or_default(),
+            worktree: String::new(),
+            tokens: (tokens * 100.0).round() / 100.0,
+            cost: (proj_cost.get(pid).copied().unwrap_or(0.0) * 100.0).round() / 100.0,
+            sessions: proj_sessions
+                .get(pid)
+                .map(|s| s.len() as u64)
+                .unwrap_or(0),
+        })
+        .collect();
+    projects.sort_by(|a, b| b.tokens.partial_cmp(&a.tokens).unwrap_or(std::cmp::Ordering::Equal));
+    projects
+}
+
 // ── Day report: today, 24 hourly buckets ───────────────────────────
 fn report_day(events: &[Event], now: DateTime<Local>) -> PeriodReport {
     let today = now.date_naive();
     let yesterday = today - Duration::days(1);
     let mut agg = Agg::default();
     let mut prev = Agg::default();
-    let mut buckets = vec![(0.0f64, 0.0f64, 0.0f64); 24]; // (input, cache, output) M
+    let mut buckets = vec![(0.0f64, 0.0f64, 0.0f64, 0.0f64); 24]; // (input, cache, output, reasoning) M
     let mut req_b = vec![0.0f64; 24];
     let mut cost_b = vec![0.0f64; 24];
+    let mut period_events: Vec<&Event> = Vec::new();
 
     for e in events {
         let d = e.ts.date_naive();
         if d == today {
+            period_events.push(e);
             agg.add(e);
             let h = e.ts.hour() as usize;
             buckets[h].0 += e.input / 1e6;
             buckets[h].1 += e.cache / 1e6;
             buckets[h].2 += e.output / 1e6;
+            buckets[h].3 += e.reasoning / 1e6;
             // Match Agg::add exactly: only the request COUNT excludes model-less
             // (slash-command) events; total cost accumulates unconditionally
             // (those events carry cost 0, so this is identical today).
@@ -324,14 +403,17 @@ fn report_day(events: &[Event], now: DateTime<Local>) -> PeriodReport {
             input: buckets[h].0,
             cache: buckets[h].1,
             output: buckets[h].2,
+            reasoning: buckets[h].3,
         })
         .collect();
+
+    let projects = aggregate_projects(&period_events);
 
     PeriodReport {
         metrics: agg.metrics(
             pct_delta(
-                agg.input + agg.cache + agg.output,
-                prev.input + prev.cache + prev.output,
+                agg.input + agg.cache + agg.output + agg.reasoning,
+                prev.input + prev.cache + prev.output + prev.reasoning,
             ),
             pct_delta(agg.cost, prev.cost),
         ),
@@ -340,6 +422,7 @@ fn report_day(events: &[Event], now: DateTime<Local>) -> PeriodReport {
 
         mcp: Agg::named(&agg.mcp_counts),
         skills: Agg::named(&agg.skill_counts),
+        projects,
         req_trend: req_b,
         cost_trend: cost_b,
     }
@@ -355,19 +438,22 @@ fn report_week(events: &[Event], now: DateTime<Local>) -> PeriodReport {
 
     let mut agg = Agg::default();
     let mut prev = Agg::default();
-    let mut buckets = vec![(0.0f64, 0.0f64, 0.0f64); 7];
+    let mut buckets = vec![(0.0f64, 0.0f64, 0.0f64, 0.0f64); 7];
     let mut req_b = vec![0.0f64; 7];
     let mut cost_b = vec![0.0f64; 7];
+    let mut period_events: Vec<&Event> = Vec::new();
 
     for e in events {
         let d = e.ts.date_naive();
         if d >= start && d < next_start {
+            period_events.push(e);
             agg.add(e);
             let idx = (d - start).num_days() as usize;
             if idx < buckets.len() {
                 buckets[idx].0 += e.input / 1e6;
                 buckets[idx].1 += e.cache / 1e6;
                 buckets[idx].2 += e.output / 1e6;
+                buckets[idx].3 += e.reasoning / 1e6;
                 // Match Agg::add: only the request COUNT excludes model-less
                 // events; cost accumulates unconditionally (their cost is 0).
                 if !e.model.is_empty() {
@@ -391,15 +477,18 @@ fn report_week(events: &[Event], now: DateTime<Local>) -> PeriodReport {
                 input: buckets[i].0,
                 cache: buckets[i].1,
                 output: buckets[i].2,
+                reasoning: buckets[i].3,
             }
         })
         .collect();
 
+    let projects = aggregate_projects(&period_events);
+
     PeriodReport {
         metrics: agg.metrics(
             pct_delta(
-                agg.input + agg.cache + agg.output,
-                prev.input + prev.cache + prev.output,
+                agg.input + agg.cache + agg.output + agg.reasoning,
+                prev.input + prev.cache + prev.output + prev.reasoning,
             ),
             pct_delta(agg.cost, prev.cost),
         ),
@@ -408,6 +497,7 @@ fn report_week(events: &[Event], now: DateTime<Local>) -> PeriodReport {
 
         mcp: Agg::named(&agg.mcp_counts),
         skills: Agg::named(&agg.skill_counts),
+        projects,
         req_trend: req_b,
         cost_trend: cost_b,
     }
@@ -430,19 +520,22 @@ fn report_month(events: &[Event], now: DateTime<Local>) -> PeriodReport {
 
     let mut agg = Agg::default();
     let mut prev = Agg::default();
-    let mut buckets = vec![(0.0f64, 0.0f64, 0.0f64); days_in_month];
+    let mut buckets = vec![(0.0f64, 0.0f64, 0.0f64, 0.0f64); days_in_month];
     let mut req_b = vec![0.0f64; days_in_month];
     let mut cost_b = vec![0.0f64; days_in_month];
+    let mut period_events: Vec<&Event> = Vec::new();
 
     for e in events {
         let d = e.ts.date_naive();
         if d >= cur_first && d < next_first {
+            period_events.push(e);
             agg.add(e);
             let idx = (d - cur_first).num_days() as usize;
             if idx < buckets.len() {
                 buckets[idx].0 += e.input / 1e6;
                 buckets[idx].1 += e.cache / 1e6;
                 buckets[idx].2 += e.output / 1e6;
+                buckets[idx].3 += e.reasoning / 1e6;
                 // Match Agg::add: only the request COUNT excludes model-less
                 // events; cost accumulates unconditionally (their cost is 0).
                 if !e.model.is_empty() {
@@ -469,15 +562,18 @@ fn report_month(events: &[Event], now: DateTime<Local>) -> PeriodReport {
                 input: buckets[i].0,
                 cache: buckets[i].1,
                 output: buckets[i].2,
+                reasoning: buckets[i].3,
             }
         })
         .collect();
 
+    let projects = aggregate_projects(&period_events);
+
     PeriodReport {
         metrics: agg.metrics(
             pct_delta(
-                agg.input + agg.cache + agg.output,
-                prev.input + prev.cache + prev.output,
+                agg.input + agg.cache + agg.output + agg.reasoning,
+                prev.input + prev.cache + prev.output + prev.reasoning,
             ),
             pct_delta(agg.cost, prev.cost),
         ),
@@ -486,6 +582,7 @@ fn report_month(events: &[Event], now: DateTime<Local>) -> PeriodReport {
 
         mcp: Agg::named(&agg.mcp_counts),
         skills: Agg::named(&agg.skill_counts),
+        projects,
         req_trend: req_b,
         cost_trend: cost_b,
     }
@@ -498,7 +595,7 @@ fn build_heatmap(events: &[Event], today: chrono::NaiveDate) -> Vec<HeatDay> {
     for e in events {
         let d = e.ts.date_naive();
         if d >= start && d <= today {
-            *by_day.entry(d).or_default() += (e.input + e.cache + e.output) / 1e6;
+            *by_day.entry(d).or_default() += (e.input + e.cache + e.output + e.reasoning) / 1e6;
         }
     }
     let mut days = Vec::new();

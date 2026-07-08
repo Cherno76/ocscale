@@ -4,7 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { domToPng } from "modern-screenshot";
 import {
-  Dashboard, PeriodReport, ModelStat, Theme, TH,
+  Dashboard, PeriodReport, ModelStat, ProjectStat, Theme, TH,
   fetchDashboard, fmtInt, fmtTokens, pct,
 } from "./data";
 import {
@@ -217,6 +217,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
   const [period, setPeriod] = useState<"Day" | "Week" | "Month">("Week");
   const [refreshing, setRefreshing] = useState(false);
   const [autostartOn, setAutostartOn] = useState(false);
+  const [costTab, setCostTab] = useState<"model" | "project">("model");
   useEffect(() => {
     // Read initial autostart state from the Rust backend.
     if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
@@ -252,9 +253,9 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
   // segment is the cache share (matching the "% cached" label); "rest" is wider
   // than output-alone would be, so a small non-cached share still reads on the
   // pill-shaped bar. Ratios are exact, never floored.
-  const splitTot = M.inputTokens + M.cacheTokens + M.outputTokens;
+  const splitTot = M.inputTokens + M.cacheTokens + M.outputTokens + M.reasoningTokens;
   const cachePct = splitTot > 0 ? (M.cacheTokens / splitTot) * 100 : 0;
-  const restPct = splitTot > 0 ? ((M.inputTokens + M.outputTokens) / splitTot) * 100 : 0;
+  const restPct = splitTot > 0 ? ((M.inputTokens + M.outputTokens + M.reasoningTokens) / splitTot) * 100 : 0;
   const models = P.models;
   // Hide noise: 0% token-share rows, and $0 entries in the cost donut.
   // Show models whose share is at least 0.1% when rounded to 1 decimal; below
@@ -264,6 +265,17 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
     (m) => Math.round((m.tokens / (M.totalTokens || 1)) * 1000) / 10 >= 0.1
   );
   const costModels = models.filter((m) => m.cost > 0);
+  const projectCostItems: ModelStat[] = P.projects
+    .filter(p => p.cost > 0)
+    .map(p => ({
+      name: p.projectName,
+      vendor: "",
+      tokens: p.tokens,
+      cost: p.cost,
+      color: "",
+      priced: true,
+      costSource: "pricing",
+    }));
   // models that were used but have no LiteLLM pricing (cost unknown, not $0)
   const unpricedModels = models.filter((m) => !m.priced && m.tokens > 0);
   const maxM = Math.max(...tokenModels.map((m) => m.tokens), 1e-9);
@@ -385,6 +397,13 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
             <div style={{ font: `600 18px ${t.mono}`, color: t.accent, marginTop: 2 }}>{tr.currencySymbol}{(M.cost * tr.exchangeRate).toFixed(2)}</div>
           </div>
         </div>
+        {M.reasoningTokens > 0 && (
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 5 }}>
+            <div style={{ width: 8, height: 8, borderRadius: 2, background: t.reasoningCol }} />
+            <span style={{ font: `500 10px ${t.ui}`, color: t.dim }}>{tr.reasoning}</span>
+            <span style={{ font: `600 10.5px ${t.mono}`, color: t.text }}>{fmtTokens(M.reasoningTokens)}</span>
+          </div>
+        )}
         {/* cached vs rest (uncached input + output) — 2-colour pill. Dark segment
             is the cache share, matching the "% cached" label below. */}
         <div style={{ display: "flex", height: 7, borderRadius: 4, overflow: "hidden", marginBottom: 5, background: t.gridLine }}>
@@ -402,13 +421,23 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
         {tokenModels.length === 0 && <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
         {tokenModels.map((m, i) => <ModelRow key={i} m={m} max={maxM} theme={t} share={tokenShares[i]} />)}
         <SectionRule t={t} m="10px 0 10px" />
-        {/* cost donut */}
-        <div style={{ marginBottom: 8 }}><Label t={t}>{tr.costByModel}</Label></div>
-        {costModels.length > 0
-          ? <CostDonut models={costModels} theme={t} size={100} thickness={15}
-              currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} />
-          : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>}
-        {unpricedModels.length > 0 && (
+        {/* cost donut — tabbed: model / project */}
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
+          <Label t={t}>{tr.costByModel}</Label>
+          <Segmented value={costTab} items={["Model", "Project"]} itemValues={["model", "project"]} theme={t} onSelect={(v) => setCostTab(v as "model" | "project")} />
+        </div>
+        {costTab === "model" ? (
+          costModels.length > 0
+            ? <CostDonut models={costModels} theme={t} size={100} thickness={15}
+                currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} />
+            : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
+        ) : (
+          projectCostItems.length > 0
+            ? <CostDonut models={projectCostItems} theme={t} size={100} thickness={15}
+                currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} />
+            : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
+        )}
+        {costTab === "model" && unpricedModels.length > 0 && (
           <div style={{ marginTop: 9, font: `500 9.5px/1.5 ${t.mono}`, color: t.faint }}>
             {tr.modelsWithoutPricing(unpricedModels.length)}{" "}
             <span style={{ color: t.dim }}>{unpricedModels.map((m) => m.name).join(", ")}</span>

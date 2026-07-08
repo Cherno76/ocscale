@@ -8,6 +8,19 @@ pub struct SeriesPoint {
     pub input: f64,    // M tokens (uncached new input)
     pub cache: f64,    // M tokens (cache creation + read)
     pub output: f64,   // M tokens
+    pub reasoning: f64, // M tokens (reasoning)
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectStat {
+    #[serde(rename = "projectId")]
+    pub project_id: String,
+    #[serde(rename = "projectName")]
+    pub project_name: String,
+    pub worktree: String,
+    pub tokens: f64,  // M tokens
+    pub cost: f64,    // USD
+    pub sessions: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -18,6 +31,8 @@ pub struct ModelStat {
     pub cost: f64,   // USD estimate
     pub color: String,
     pub priced: bool, // false = no pricing data in LiteLLM (cost is unknown, not $0)
+    #[serde(rename = "costSource")]
+    pub cost_source: String, // "pricing", "opencode", or "none"
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -36,6 +51,8 @@ pub struct Metrics {
     pub cache_tokens: f64,
     #[serde(rename = "outputTokens")]
     pub output_tokens: f64,
+    #[serde(rename = "reasoningTokens")]
+    pub reasoning_tokens: f64,
     pub cost: f64,
     #[serde(rename = "mcpCalls")]
     pub mcp_calls: u64,
@@ -58,6 +75,7 @@ pub struct PeriodReport {
     pub models: Vec<ModelStat>,
     pub mcp: Vec<NamedCount>,
     pub skills: Vec<NamedCount>,
+    pub projects: Vec<ProjectStat>,
     #[serde(rename = "reqTrend")]
     pub req_trend: Vec<f64>,
     #[serde(rename = "costTrend")]

@@ -1,16 +1,19 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export interface SeriesPoint { label: string; full: string; input: number; cache: number; output: number }
-export interface ModelStat { name: string; vendor: string; tokens: number; cost: number; color: string; priced: boolean }
+export interface SeriesPoint { label: string; full: string; input: number; cache: number; output: number; reasoning: number }
+export interface ProjectStat { projectId: string; projectName: string; worktree: string; tokens: number; cost: number; sessions: number }
+export interface ModelStat { name: string; vendor: string; tokens: number; cost: number; color: string; priced: boolean; costSource: string }
 export interface NamedCount { name: string; count: number }
 export interface Metrics {
   totalTokens: number; inputTokens: number; cacheTokens: number; outputTokens: number; cost: number;
   mcpCalls: number; skillCalls: number; requests: number; sessions: number;
   deltaTokens: number; deltaCost: number; servers: number; skills: number;
+  reasoningTokens: number;
 }
 export interface PeriodReport {
   metrics: Metrics; series: SeriesPoint[]; models: ModelStat[];
   mcp: NamedCount[]; skills: NamedCount[]; reqTrend: number[]; costTrend: number[];
+  projects: ProjectStat[];
 }
 export interface HeatDay { date: string; tokens: number; level: number }
 export interface Dashboard {
@@ -69,7 +72,7 @@ export function linePath(values: number[], w: number, h: number, pad = 2) {
 // ── theme ────────────────────────────────────────────────────────
 export interface Theme {
   ui: string; mono: string; display: string;
-  accent: string; accentSoft: string; cacheCol: string;
+  accent: string; accentSoft: string; cacheCol: string; reasoningCol: string;
   text: string; dim: string; faint: string;
   gridLine: string; card: string;
   segBg: string; segBorder: string; segOnBg: string; segOnText: string; segOffText: string; segOnShadow: string;
@@ -80,7 +83,7 @@ export const TH: Record<"dark" | "light", Theme> = {
     ui: "'IBM Plex Sans', system-ui, sans-serif",
     mono: "'IBM Plex Mono', ui-monospace, monospace",
     display: "'Space Grotesk', system-ui, sans-serif",
-    accent: "#3b82f6", accentSoft: "#60a5fa", cacheCol: "#5a6660",
+    accent: "#3b82f6", accentSoft: "#60a5fa", cacheCol: "#5a6660", reasoningCol: "#a78bfa",
     text: "rgba(255,255,255,0.94)", dim: "rgba(255,255,255,0.52)", faint: "rgba(255,255,255,0.32)",
     gridLine: "rgba(255,255,255,0.06)", card: "#1f2226",
     segBg: "rgba(255,255,255,0.06)", segBorder: "rgba(255,255,255,0.09)",
@@ -91,7 +94,7 @@ export const TH: Record<"dark" | "light", Theme> = {
     ui: "'IBM Plex Sans', system-ui, sans-serif",
     mono: "'IBM Plex Mono', ui-monospace, monospace",
     display: "'Space Grotesk', system-ui, sans-serif",
-    accent: "#2563eb", accentSoft: "#93c5fd", cacheCol: "#aeb8b2",
+    accent: "#2563eb", accentSoft: "#93c5fd", cacheCol: "#aeb8b2", reasoningCol: "#7c3aed",
     text: "rgba(17,22,19,0.94)", dim: "rgba(17,22,19,0.5)", faint: "rgba(17,22,19,0.32)",
     gridLine: "rgba(0,0,0,0.06)", card: "#ffffff",
     segBg: "rgba(0,0,0,0.05)", segBorder: "rgba(0,0,0,0.07)",

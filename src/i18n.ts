@@ -18,6 +18,7 @@ const EN = {
   cached: "Cached",
   new_: "New",
   pctCached: "% cache hit",
+  reasoning: "Reasoning",
   // Model section
   tokensByModel: "Tokens by model",
   noUsageInThisPeriod: "No usage in this period",
@@ -32,6 +33,9 @@ const EN = {
   today24h: "today 24h",
   thisWeek: "this week",
   thisMonth: "this month",
+  // Projects
+  byProject: "By project",
+  sessionsCount: (n: number) => `${n} sessions`,
   // MCP
   mcpCalls: "MCP calls",
   servers: "servers",
@@ -81,6 +85,7 @@ const ZH: Dict = {
   cached: "缓存",
   new_: "新增",
   pctCached: "% 命中缓存",
+  reasoning: "推理",
   tokensByModel: "按模型统计 Token",
   noUsageInThisPeriod: "该时段无使用记录",
   costByModel: "按模型统计费用",
@@ -93,6 +98,10 @@ const ZH: Dict = {
   today24h: "今日 24h",
   thisWeek: "本周",
   thisMonth: "本月",
+  // Projects
+  byProject: "按项目",
+  sessionsCount: (n: number) => `${n} 个会话`,
+  // MCP
   mcpCalls: "MCP 调用",
   servers: "服务",
   noMcpCalls: "该时段无 MCP 调用",
