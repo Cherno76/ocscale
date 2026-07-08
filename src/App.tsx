@@ -4,8 +4,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { domToPng } from "modern-screenshot";
 import {
-  Dashboard, PeriodReport, ModelStat, ProjectStat, Theme, TH,
-  fetchDashboard, fmtInt, fmtTokens, pct,
+  Dashboard, PeriodReport, ModelStat, ProjectStat, AgentStat, CodeMetrics, SessionInfo, Theme, TH,
+  fetchDashboard, fmtInt, fmtTokens, pct, fmtMoney,
 } from "./data";
 import {
   TokenGlyph, Segmented, BarChart, Sparkline, CostDonut, BarList, Heatmap,
@@ -226,6 +226,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
   { dash: Dashboard; dark: boolean; themePref: "dark" | "light" | "system"; onToggleTheme: () => void; openGen: number; active: boolean; lang: Lang; toggleLang: () => void; onRefresh: () => void; version: string }) {
   const t = TH[dark ? "dark" : "light"];
   const { t: tr } = useT();
+  const [tab, setTab] = useState<"Overview" | "Agents" | "Code" | "Sessions">("Overview");
   const periodItems = [tr.day, tr.week, tr.month];
   // Drag the popover by its body (Windows/Linux only — macOS uses the menu-bar
   // NSPanel and is gated out). A real OS window-drag begins only once the
@@ -390,25 +391,39 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
         {/* sticky header — stays put while the body scrolls */}
         <div style={{
           position: "sticky", top: 0, zIndex: 10,
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "15px 15px 12px",
           background: dark ? "#1f2226" : "#ffffff",
-          borderBottom: `1px solid ${t.gridLine}`,
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <TokenGlyph color={t.accent} size={16} />
-            <span style={{ font: `600 13px ${t.ui}`, color: t.text, letterSpacing: ".01em" }}>{tr.appName}</span>
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "15px 15px 10px",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <TokenGlyph color={t.accent} size={16} />
+              <span style={{ font: `600 13px ${t.ui}`, color: t.text, letterSpacing: ".01em" }}>{tr.appName}</span>
+            </div>
+            <div data-no-drag="" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "default" }}>
+              {tab === "Overview" && (
+                <Segmented value={period} items={periodItems} itemValues={["Day","Week","Month"]} theme={t}
+                  onSelect={(v) => setPeriod(v as any)} />
+              )}
+              <ThemeToggle pref={themePref} theme={t} td={tr} onCycle={onToggleTheme} />
+              <LangToggle lang={lang} onClick={toggleLang} theme={t} />
+              <ScreenshotButton theme={t} busy={shotBusy} onClick={captureScreenshot} td={tr} />
+            </div>
           </div>
-          <div data-no-drag="" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "default" }}>
-            <Segmented value={period} items={periodItems} itemValues={["Day","Week","Month"]} theme={t}
-              onSelect={(v) => setPeriod(v as any)} />
-            <ThemeToggle pref={themePref} theme={t} td={tr} onCycle={onToggleTheme} />
-            <LangToggle lang={lang} onClick={toggleLang} theme={t} />
-            <ScreenshotButton theme={t} busy={shotBusy} onClick={captureScreenshot} td={tr} />
+          {/* tab bar */}
+          <div style={{
+            padding: "0 10px 10px",
+            borderBottom: `1px solid ${t.gridLine}`,
+          }}>
+            <Segmented value={tab} items={[tr.overview, tr.agents, tr.code, tr.sessionsTab]}
+              itemValues={["Overview","Agents","Code","Sessions"]} theme={t}
+              onSelect={(v) => setTab(v as any)} />
           </div>
         </div>
         {/* scrolling body */}
         <div style={{ padding: "14px 15px 15px" }}>
+        {tab === "Overview" && <>
         {/* hero */}
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 10 }}>
           <div>
@@ -549,6 +564,10 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
         <div style={{ marginTop: 10, textAlign: "center", font: `500 9px ${t.ui}`, color: t.faint }}>
           OCScale v{version || "dev"} · © 2026
         </div>
+        </>}
+        {tab === "Agents" && <AgentsTab dash={dash} theme={t} tr={tr} />}
+        {tab === "Code" && <CodeTab dash={dash} theme={t} tr={tr} />}
+        {tab === "Sessions" && <SessionsTab dash={dash} theme={t} tr={tr} />}
       </div>{/* /scrolling body */}
       </div>
       {toast && (
@@ -564,6 +583,128 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
         </div>
       )}
     </div>
+  );
+}
+// ── Agents tab ────────────────────────────────────────────────────
+function AgentRow({ a, max, theme, share }: { a: AgentStat; max: number; theme: Theme; share: number }) {
+  const pctStr = share % 1 === 0 ? share.toFixed(0) : share.toFixed(1);
+  const PALETTE = ["#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#4b5a52", "#a78bfa", "#e0795f", "#6ee7b7"];
+  const hash = a.agent.split("").reduce((s, c) => s + c.charCodeAt(0), 0);
+  const color = PALETTE[hash % PALETTE.length];
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "5px 0" }}>
+      <span style={{ width: 7, height: 7, borderRadius: 2, background: color, flex: "0 0 auto" }} />
+      <div style={{ minWidth: 0, flex: "0 0 118px" }}>
+        <div style={{ font: `500 11.5px ${theme.ui}`, color: theme.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.agent}</div>
+      </div>
+      <div style={{ flex: 1, height: 5, borderRadius: 3, background: theme.gridLine, overflow: "hidden" }}>
+        <div style={{ width: `${(a.tokens / max) * 100}%`, height: "100%", background: color, borderRadius: 3 }} />
+      </div>
+      <span style={{ font: `500 10.5px ${theme.mono}`, color: theme.dim, flex: "0 0 auto", width: 42, textAlign: "right" }}>{fmtTokens(a.tokens)}</span>
+      <span style={{ font: `600 10.5px ${theme.mono}`, color: theme.text, flex: "0 0 auto", width: 40, textAlign: "right" }}>{pctStr}%</span>
+    </div>
+  );
+}
+
+function AgentsTab({ dash, theme, tr }: { dash: Dashboard; theme: Theme; tr: Dict }) {
+  const agents = dash.agents || [];
+  const max = Math.max(...agents.map(a => a.tokens), 1e-9);
+  const shares = sharePcts(agents.map(a => a.tokens));
+  return (
+    <>
+      <div style={{ marginBottom: 9 }}><Label t={theme}>{tr.tokensByAgent}</Label></div>
+      {agents.length === 0 ? (
+        <div style={{ font: `500 10.5px ${theme.mono}`, color: theme.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>
+      ) : (
+        agents.map((a, i) => <AgentRow key={i} a={a} max={max} theme={theme} share={shares[i]} />)
+      )}
+      <SectionRule t={theme} />
+    </>
+  );
+}
+
+// ── Code tab ──────────────────────────────────────────────────────
+function CodeTab({ dash, theme, tr }: { dash: Dashboard; theme: Theme; tr: Dict }) {
+  const cm = dash.codeMetrics || { additions: 0, deletions: 0, files: 0, diffs: 0 };
+  const hasCode = cm.additions > 0 || cm.deletions > 0 || cm.files > 0 || cm.diffs > 0;
+  return (
+    <>
+      <div style={{ marginBottom: 9 }}><Label t={theme}>{tr.codeActivity}</Label></div>
+      {!hasCode ? (
+        <div style={{ font: `500 10.5px ${theme.mono}`, color: theme.faint, padding: "4px 0" }}>{tr.noCodeActivity}</div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <MiniStat label={tr.linesAdded} value={fmtInt(cm.additions)} theme={theme} accent="#27b06e" />
+          <MiniStat label={tr.linesDeleted} value={fmtInt(cm.deletions)} theme={theme} accent="#e0795f" />
+          <MiniStat label={tr.filesChanged} value={fmtInt(cm.files)} theme={theme} />
+          <MiniStat label={tr.diffsCount} value={fmtInt(cm.diffs)} theme={theme} />
+        </div>
+      )}
+      <SectionRule t={theme} />
+    </>
+  );
+}
+
+// ── Sessions tab ──────────────────────────────────────────────────
+function fmtDuration(secs: number): string {
+  if (secs < 60) return `${secs}s`;
+  const m = Math.floor(secs / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+function fmtTimeAgo(iso: string): string {
+  const d = new Date(iso);
+  const now = Date.now();
+  const diff = now - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+function SessionRow({ s, theme, tr }: { s: SessionInfo; theme: Theme; tr: Dict }) {
+  const title = s.sessionTitle || "Untitled";
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 8, padding: "7px 0",
+      borderBottom: `1px solid ${theme.gridLine}`,
+    }}>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ font: `500 11.5px ${theme.ui}`, color: theme.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</div>
+        <div style={{ display: "flex", gap: 6, marginTop: 2 }}>
+          {s.agent && (
+            <span style={{ font: `500 9px ${theme.mono}`, color: theme.accent, background: `${theme.accent}22`, padding: "1px 5px", borderRadius: 4 }}>{s.agent}</span>
+          )}
+          <span style={{ font: `500 9px ${theme.mono}`, color: theme.faint }}>{fmtTimeAgo(s.timeCreated)}</span>
+          <span style={{ font: `500 9px ${theme.mono}`, color: theme.faint }}>{fmtDuration(s.durationSecs)}</span>
+        </div>
+      </div>
+      <div style={{ textAlign: "right", flex: "0 0 auto" }}>
+        <div style={{ font: `600 10.5px ${theme.mono}`, color: theme.text }}>{fmtTokens(s.tokens)}</div>
+        {s.cost > 0 && (
+          <div style={{ font: `500 9px ${theme.mono}`, color: theme.accent }}>{tr.currencySymbol}{s.cost.toFixed(2)}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SessionsTab({ dash, theme, tr }: { dash: Dashboard; theme: Theme; tr: Dict }) {
+  const sessions = dash.recentSessions || [];
+  return (
+    <>
+      <div style={{ marginBottom: 9 }}><Label t={theme}>{tr.recentSessions}</Label></div>
+      {sessions.length === 0 ? (
+        <div style={{ font: `500 10.5px ${theme.mono}`, color: theme.faint, padding: "4px 0" }}>{tr.noSessions}</div>
+      ) : (
+        sessions.map((s, i) => <SessionRow key={i} s={s} theme={theme} tr={tr} />)
+      )}
+      <SectionRule t={theme} />
+    </>
   );
 }
 

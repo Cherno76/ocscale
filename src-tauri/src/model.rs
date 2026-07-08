@@ -2,6 +2,37 @@
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
+pub struct AgentStat {
+    pub agent: String,
+    pub tokens: f64,  // M tokens
+    pub cost: f64,    // USD
+    pub requests: u64,
+    pub sessions: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CodeMetrics {
+    pub additions: u64,
+    pub deletions: u64,
+    pub files: u64,
+    pub diffs: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SessionInfo {
+    pub id: String,
+    #[serde(rename = "sessionTitle")]
+    pub session_title: String,
+    pub agent: String,
+    pub tokens: f64,  // M tokens
+    pub cost: f64,    // USD
+    #[serde(rename = "durationSecs")]
+    pub duration_secs: u64,
+    #[serde(rename = "timeCreated")]
+    pub time_created: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct SeriesPoint {
     pub label: String, // sparse axis label (many empty)
     pub full: String,  // complete label for the hover tooltip (hour / date)
@@ -99,4 +130,9 @@ pub struct Dashboard {
     pub today_tokens: f64, // M tokens, for the tray label
     #[serde(rename = "generatedAt")]
     pub generated_at: String,
+    pub agents: Vec<AgentStat>,
+    #[serde(rename = "codeMetrics")]
+    pub code_metrics: CodeMetrics,
+    #[serde(rename = "recentSessions")]
+    pub recent_sessions: Vec<SessionInfo>,
 }

@@ -31,6 +31,14 @@ struct Event {
     skills: Vec<String>, // user-installed skill names called in this msg
     project_id: String,
     project_name: String,
+    // ── session-level metadata ────────────────────────────────────
+    agent: String,
+    code_additions: u64,
+    code_deletions: u64,
+    code_files: u64,
+    code_diffs: u64,
+    session_duration_ms: i64,
+    session_title: String,
 }
 
 // Top-5 models keep the blue/slate scheme; everything beyond is uniform gray.
@@ -125,6 +133,17 @@ pub fn build_dashboard() -> Dashboard {
         .map(|e| (e.input + e.cache + e.output + e.reasoning) / 1e6)
         .sum();
 
+    // 4. Cross-cutting aggregations (not tied to day/week/month period).
+    //    Agents, code metrics, and session list are computed from all events
+    //    in memory (~210-day window) so all tabs show consistent data.
+    let mut full = Agg::default();
+    for e in &events {
+        full.add(e);
+    }
+    let agents = full.agents();
+    let code_metrics = full.code_metrics();
+    let recent_sessions = full.recent_sessions(50);
+
     Dashboard {
         day,
         week,
@@ -132,6 +151,9 @@ pub fn build_dashboard() -> Dashboard {
         heatmap,
         today_tokens,
         generated_at: now.to_rfc3339(),
+        agents,
+        code_metrics,
+        recent_sessions,
     }
 }
 
@@ -185,6 +207,13 @@ fn compute_event(r: &RawEvent, cfg: &UserConfig, pricing: &Pricing) -> Event {
         skills,
         project_id: r.project_id.clone(),
         project_name: r.project_name.clone(),
+        agent: r.agent.clone(),
+        code_additions: r.code_additions,
+        code_deletions: r.code_deletions,
+        code_files: r.code_files,
+        code_diffs: r.code_diffs,
+        session_duration_ms: r.session_duration_ms,
+        session_title: r.session_title.clone(),
     }
 }
 
@@ -206,6 +235,19 @@ struct Agg {
     model_cost_source: HashMap<String, String>,
     mcp_counts: HashMap<String, u64>,
     skill_counts: HashMap<String, u64>,
+    // ── agent-level aggregation ──────────────────────────────────
+    agent_tokens: HashMap<String, f64>,
+    agent_cost: HashMap<String, f64>,
+    agent_requests: HashMap<String, u64>,
+    agent_sessions: HashMap<String, HashSet<String>>,
+    // ── code metrics (summed across unique sessions in period) ──
+    code_additions: u64,
+    code_deletions: u64,
+    code_files: u64,
+    code_diffs: u64,
+    code_sessions: HashSet<String>, // track which sessions we've already counted
+    // ── session info for listing ─────────────────────────────────
+    session_info: Vec<(String, String, String, f64, f64, i64, i64)>, // (id, title, agent, tokens, cost, dur_ms, created_ms)
 }
 
 impl Agg {
@@ -215,8 +257,36 @@ impl Agg {
         self.output += e.output;
         self.reasoning += e.reasoning;
         self.cost += e.cost;
-        if !e.session.is_empty() {
-            self.sessions.insert(e.session.clone());
+        // ── session: only count once per unique session ───────────
+        let is_new_session = !e.session.is_empty() && self.sessions.insert(e.session.clone());
+        // ── agent tracking (per-message, like model stats) ────────
+        if !e.agent.is_empty() && !e.model.is_empty() {
+            *self.agent_tokens.entry(e.agent.clone()).or_default() += e.input + e.cache + e.output + e.reasoning;
+            *self.agent_cost.entry(e.agent.clone()).or_default() += e.cost;
+            *self.agent_requests.entry(e.agent.clone()).or_default() += 1;
+            self.agent_sessions.entry(e.agent.clone()).or_default().insert(e.session.clone());
+        }
+        // ── code metrics: sum once per unique session ─────────────
+        if is_new_session && e.code_additions > 0 || e.code_files > 0 {
+            if self.code_sessions.insert(e.session.clone()) {
+                self.code_additions += e.code_additions;
+                self.code_deletions += e.code_deletions;
+                self.code_files += e.code_files;
+                self.code_diffs += e.code_diffs;
+            }
+        }
+        // ── session info: collect one entry per unique session ────
+        if is_new_session {
+            let total_tok = e.input + e.cache + e.output + e.reasoning;
+            self.session_info.push((
+                e.session.clone(),
+                e.session_title.clone(),
+                e.agent.clone(),
+                total_tok,
+                e.cost,
+                e.session_duration_ms,
+                e.ts.timestamp_millis(),
+            ));
         }
         // Slash-command skill events carry no model (empty) — they're not LLM
         // requests, so they must not inflate request counts or the model split.
@@ -301,6 +371,56 @@ impl Agg {
             servers: self.mcp_counts.len() as u64,
             skills: self.skill_counts.len() as u64,
         }
+    }
+
+    fn agents(&self) -> Vec<AgentStat> {
+        let mut v: Vec<AgentStat> = self
+            .agent_tokens
+            .iter()
+            .map(|(agent, tokens)| AgentStat {
+                agent: agent.clone(),
+                tokens: (*tokens / 1e6 * 100.0).round() / 100.0,
+                cost: (*self.agent_cost.get(agent).unwrap_or(&0.0) * 100.0).round() / 100.0,
+                requests: *self.agent_requests.get(agent).unwrap_or(&0),
+                sessions: self.agent_sessions.get(agent).map(|s| s.len() as u64).unwrap_or(0),
+            })
+            .collect();
+        v.sort_by(|a, b| b.tokens.partial_cmp(&a.tokens).unwrap_or(std::cmp::Ordering::Equal));
+        v
+    }
+
+    fn code_metrics(&self) -> CodeMetrics {
+        CodeMetrics {
+            additions: self.code_additions,
+            deletions: self.code_deletions,
+            files: self.code_files,
+            diffs: self.code_diffs,
+        }
+    }
+
+    fn recent_sessions(&self, limit: usize) -> Vec<SessionInfo> {
+        let mut v: Vec<SessionInfo> = self
+            .session_info
+            .iter()
+            .map(|(id, title, agent, tokens, cost, dur_ms, created_ms)| {
+                let ts = DateTime::from_timestamp_millis(*created_ms)
+                    .unwrap_or_default()
+                    .with_timezone(&Local);
+                SessionInfo {
+                    id: id.clone(),
+                    session_title: title.clone(),
+                    agent: agent.clone(),
+                    tokens: (*tokens / 1e6 * 100.0).round() / 100.0,
+                    cost: (*cost * 100.0).round() / 100.0,
+                    duration_secs: ((*dur_ms).max(0) / 1000) as u64,
+                    time_created: ts.to_rfc3339(),
+                }
+            })
+            .collect();
+        // Sort by tokens descending
+        v.sort_by(|a, b| b.tokens.partial_cmp(&a.tokens).unwrap_or(std::cmp::Ordering::Equal));
+        v.truncate(limit);
+        v
     }
 }
 

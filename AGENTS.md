@@ -29,6 +29,8 @@ Three files must be updated together:
 
 The frontend reads version dynamically via the `get_version` Tauri command (reads `CARGO_PKG_VERSION` at compile time).
 
+**Auto-commit on minor bump**: when PATCH wraps (0.1.9 → 0.2.0, 0.2.9 → 0.3.0, etc.), commit the version change and push to GitHub automatically — no need to wait for the user to ask. Routine patch bumps (0.1.0 → 0.1.1) are committed alongside the code changes that triggered them.
+
 ## Architecture
 
 ```

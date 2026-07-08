@@ -4,6 +4,9 @@ export interface SeriesPoint { label: string; full: string; input: number; cache
 export interface ProjectStat { projectId: string; projectName: string; worktree: string; tokens: number; cost: number; sessions: number }
 export interface ModelStat { name: string; vendor: string; tokens: number; cost: number; color: string; priced: boolean; costSource: string }
 export interface NamedCount { name: string; count: number }
+export interface AgentStat { agent: string; tokens: number; cost: number; requests: number; sessions: number }
+export interface CodeMetrics { additions: number; deletions: number; files: number; diffs: number }
+export interface SessionInfo { id: string; sessionTitle: string; agent: string; tokens: number; cost: number; durationSecs: number; timeCreated: string }
 export interface Metrics {
   totalTokens: number; inputTokens: number; cacheTokens: number; outputTokens: number; cost: number;
   mcpCalls: number; skillCalls: number; requests: number; sessions: number;
@@ -19,6 +22,9 @@ export interface HeatDay { date: string; tokens: number; level: number }
 export interface Dashboard {
   day: PeriodReport; week: PeriodReport; month: PeriodReport;
   heatmap: HeatDay[]; todayTokens: number; generatedAt: string;
+  agents: AgentStat[];
+  codeMetrics: CodeMetrics;
+  recentSessions: SessionInfo[];
 }
 
 export async function fetchDashboard(): Promise<Dashboard> {

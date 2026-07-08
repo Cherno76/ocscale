@@ -74,6 +74,25 @@ const EN = {
   noTokens: "No tokens",
   tokensLabel: (n: string) => `${n} tokens`,
   noCalls: "No calls",
+  // Tabs
+  overview: "Overview",
+  agents: "Agents",
+  code: "Code",
+  sessionsTab: "Sessions",
+  // Agents tab
+  tokensByAgent: "Tokens by agent",
+  byAgent: "Agent",
+  // Code tab
+  codeActivity: "Code activity",
+  linesAdded: "Added",
+  linesDeleted: "Deleted",
+  filesChanged: "Files",
+  diffsCount: "Diffs",
+  noCodeActivity: "No code activity recorded",
+  // Sessions tab
+  recentSessions: "Recent sessions",
+  noSessions: "No sessions in this period",
+  durationLabel: "duration",
 };
 
 const ZH: Dict = {
@@ -132,6 +151,25 @@ const ZH: Dict = {
   noTokens: "无 Token",
   tokensLabel: (n: string) => `${n} Tokens`,
   noCalls: "无调用",
+  // Tabs
+  overview: "概览",
+  agents: "Agent",
+  code: "代码",
+  sessionsTab: "会话",
+  // Agents tab
+  tokensByAgent: "按 Agent 统计 Token",
+  byAgent: "Agent",
+  // Code tab
+  codeActivity: "代码活动",
+  linesAdded: "新增行",
+  linesDeleted: "删除行",
+  filesChanged: "文件数",
+  diffsCount: "Diff 数",
+  noCodeActivity: "无代码活动记录",
+  // Sessions tab
+  recentSessions: "最近会话",
+  noSessions: "该时段无会话",
+  durationLabel: "时长",
 };
 
 export const DICT: Record<Lang, Dict> = { en: EN, zh: ZH };

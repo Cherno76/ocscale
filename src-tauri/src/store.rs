@@ -29,6 +29,21 @@ pub struct RawEvent {
     pub stored_cost: Option<f64>,
     pub project_id: String,
     pub project_name: String,
+    // ── session-level fields (denormalized per message) ──────────
+    /// Agent role that produced this session (build, explorer, etc.)
+    pub agent: String,
+    /// Lines added across the whole session
+    pub code_additions: u64,
+    /// Lines deleted across the whole session
+    pub code_deletions: u64,
+    /// Files changed across the whole session
+    pub code_files: u64,
+    /// Diff count across the whole session
+    pub code_diffs: u64,
+    /// Session duration in milliseconds (time_updated - time_created)
+    pub session_duration_ms: i64,
+    /// Session title (user-provided or auto-generated)
+    pub session_title: String,
 }
 
 pub struct Store {
@@ -59,7 +74,13 @@ fn opencode_db_path() -> Option<PathBuf> {
 }
 
 /// Parse an assistant message JSON `data` column into a RawEvent.
-fn parse_message(id: String, session_id: String, data: &str, project_id: String, project_name: String) -> Option<RawEvent> {
+fn parse_message(
+    id: String, session_id: String, data: &str,
+    project_id: String, project_name: String,
+    agent: String, code_additions: u64, code_deletions: u64,
+    code_files: u64, code_diffs: u64,
+    session_duration_ms: i64, session_title: String,
+) -> Option<RawEvent> {
     let v: serde_json::Value = serde_json::from_str(data).ok()?;
 
     // Only assistant messages carry token counts.
@@ -122,6 +143,13 @@ fn parse_message(id: String, session_id: String, data: &str, project_id: String,
         stored_cost: if cost > 0.0 { Some(cost) } else { None },
         project_id,
         project_name,
+        agent,
+        code_additions,
+        code_deletions,
+        code_files,
+        code_diffs,
+        session_duration_ms,
+        session_title,
     })
 }
 
@@ -134,10 +162,18 @@ fn query_events() -> Result<Vec<RawEvent>, rusqlite::Error> {
     let conn = Connection::open(&path)?;
 
     // Read every assistant message that has token data, ordered by time.
-    // JOIN with session and project to get project info for project aggregation.
+    // JOIN with session and project to get project info + session-level metadata.
     let mut stmt = conn.prepare(
         "SELECT m.id, m.session_id, m.data, s.project_id,
-                COALESCE(p.name, s.directory) as project_name
+                COALESCE(p.name, s.directory) as project_name,
+                COALESCE(s.agent, '') as agent,
+                COALESCE(s.summary_additions, 0),
+                COALESCE(s.summary_deletions, 0),
+                COALESCE(s.summary_files, 0),
+                COALESCE(s.summary_diffs, 0),
+                COALESCE(s.time_created, 0),
+                COALESCE(s.time_updated, 0),
+                COALESCE(s.title, '')
          FROM message m
          JOIN session s ON m.session_id = s.id
          LEFT JOIN project p ON s.project_id = p.id
@@ -153,6 +189,14 @@ fn query_events() -> Result<Vec<RawEvent>, rusqlite::Error> {
             let data: String = row.get(2)?;
             let project_id: String = row.get(3)?;
             let project_name: String = row.get(4)?;
+            let agent: String = row.get(5)?;
+            let code_additions: u64 = row.get(6)?;
+            let code_deletions: u64 = row.get(7)?;
+            let code_files: u64 = row.get(8)?;
+            let code_diffs: u64 = row.get(9)?;
+            let time_created: i64 = row.get(10)?;
+            let time_updated: i64 = row.get(11)?;
+            let session_title: String = row.get(12)?;
             // COALESCE(p.name, s.directory) falls back to full paths like
             // "/Users/…/my-project". Extract just the last segment for display.
             let project_name = if project_name.starts_with('/') {
@@ -160,11 +204,24 @@ fn query_events() -> Result<Vec<RawEvent>, rusqlite::Error> {
             } else {
                 project_name
             };
-            Ok((id, session_id, data, project_id, project_name))
+            let session_duration_ms = if time_created > 0 && time_updated > 0 {
+                time_updated - time_created
+            } else {
+                0
+            };
+            Ok((id, session_id, data, project_id, project_name,
+                agent, code_additions, code_deletions, code_files, code_diffs,
+                session_duration_ms, session_title))
         })?
         .filter_map(|r| r.ok())
-        .filter_map(|(id, session_id, data, project_id, project_name)| {
-            parse_message(id, session_id, &data, project_id, project_name)
+        .filter_map(|(id, session_id, data, project_id, project_name,
+                       agent, code_additions, code_deletions, code_files, code_diffs,
+                       session_duration_ms, session_title)| {
+            parse_message(
+                id, session_id, &data, project_id, project_name,
+                agent, code_additions, code_deletions, code_files, code_diffs,
+                session_duration_ms, session_title,
+            )
         })
         .collect();
 
