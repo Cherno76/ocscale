@@ -24,6 +24,8 @@ pub struct SessionInfo {
     #[serde(rename = "sessionTitle")]
     pub session_title: String,
     pub agent: String,
+    #[serde(rename = "projectName")]
+    pub project_name: String,
     pub tokens: f64,  // M tokens
     pub cost: f64,    // USD
     #[serde(rename = "durationSecs")]

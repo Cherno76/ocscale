@@ -699,7 +699,10 @@ function SessionRow({ s, theme, tr }: { s: SessionInfo; theme: Theme; tr: Dict }
     }}>
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ font: `500 11.5px ${theme.ui}`, color: theme.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</div>
-        <div style={{ display: "flex", gap: 6, marginTop: 2 }}>
+        <div style={{ display: "flex", gap: 6, marginTop: 2, flexWrap: "wrap" }}>
+          {s.projectName && (
+            <span style={{ font: `500 9px ${theme.mono}`, color: theme.dim, background: theme.gridLine, padding: "1px 5px", borderRadius: 4 }}>{s.projectName}</span>
+          )}
           {s.agent && (
             <span style={{ font: `500 9px ${theme.mono}`, color: theme.accent, background: `${theme.accent}22`, padding: "1px 5px", borderRadius: 4 }}>{s.agent}</span>
           )}

@@ -6,7 +6,7 @@ export interface ModelStat { name: string; vendor: string; tokens: number; cost:
 export interface NamedCount { name: string; count: number }
 export interface AgentStat { agent: string; tokens: number; cost: number; requests: number; sessions: number }
 export interface CodeMetrics { additions: number; deletions: number; files: number; diffs: number }
-export interface SessionInfo { id: string; sessionTitle: string; agent: string; tokens: number; cost: number; durationSecs: number; timeCreated: string }
+export interface SessionInfo { id: string; sessionTitle: string; agent: string; projectName: string; tokens: number; cost: number; durationSecs: number; timeCreated: string }
 export interface Metrics {
   totalTokens: number; inputTokens: number; cacheTokens: number; outputTokens: number; cost: number;
   mcpCalls: number; skillCalls: number; requests: number; sessions: number;
