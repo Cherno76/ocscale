@@ -399,28 +399,27 @@ impl Agg {
     }
 
     fn recent_sessions(&self, limit: usize) -> Vec<SessionInfo> {
-        let mut v: Vec<SessionInfo> = self
-            .session_info
-            .iter()
+        let mut tuples: Vec<_> = self.session_info.clone();
+        // Sort by time created descending (most recent first)
+        tuples.sort_by(|a, b| b.6.cmp(&a.6)); // .6 = created_ms
+        tuples.truncate(limit);
+        tuples
+            .into_iter()
             .map(|(id, title, agent, tokens, cost, dur_ms, created_ms)| {
-                let ts = DateTime::from_timestamp_millis(*created_ms)
+                let ts = DateTime::from_timestamp_millis(created_ms)
                     .unwrap_or_default()
                     .with_timezone(&Local);
                 SessionInfo {
-                    id: id.clone(),
-                    session_title: title.clone(),
-                    agent: agent.clone(),
-                    tokens: (*tokens / 1e6 * 100.0).round() / 100.0,
-                    cost: (*cost * 100.0).round() / 100.0,
-                    duration_secs: ((*dur_ms).max(0) / 1000) as u64,
+                    id,
+                    session_title: title,
+                    agent,
+                    tokens: (tokens / 1e6 * 100.0).round() / 100.0,
+                    cost: (cost * 100.0).round() / 100.0,
+                    duration_secs: (dur_ms.max(0) / 1000) as u64,
                     time_created: ts.to_rfc3339(),
                 }
             })
-            .collect();
-        // Sort by tokens descending
-        v.sort_by(|a, b| b.tokens.partial_cmp(&a.tokens).unwrap_or(std::cmp::Ordering::Equal));
-        v.truncate(limit);
-        v
+            .collect()
     }
 }
 
