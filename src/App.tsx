@@ -585,11 +585,8 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
   );
 }
 // ── Agents tab ────────────────────────────────────────────────────
-function AgentRow({ a, max, theme, share }: { a: AgentStat; max: number; theme: Theme; share: number }) {
+function AgentRow({ a, max, theme, share, color }: { a: AgentStat; max: number; theme: Theme; share: number; color: string }) {
   const pctStr = share % 1 === 0 ? share.toFixed(0) : share.toFixed(1);
-  const PALETTE = ["#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#4b5a52", "#a78bfa", "#e0795f", "#6ee7b7"];
-  const hash = a.agent.split("").reduce((s, c) => s + c.charCodeAt(0), 0);
-  const color = PALETTE[hash % PALETTE.length];
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "5px 0" }}>
       <span style={{ width: 7, height: 7, borderRadius: 2, background: color, flex: "0 0 auto" }} />
@@ -609,29 +606,29 @@ function AgentsTab({ dash, theme, tr }: { dash: Dashboard; theme: Theme; tr: Dic
   const agents = dash.agents || [];
   const max = Math.max(...agents.map(a => a.tokens), 1e-9);
   const shares = sharePcts(agents.map(a => a.tokens));
+  // Blue palette by rank (darkest → lightest), consistent between rows and donut
+  const BLUES = ["#1e3a8a", "#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe"];
+  const agentColor = (i: number) => BLUES[i % BLUES.length];
   // Build donut items from agents with cost > 0
-  const PALETTE = ["#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#4b5a52", "#a78bfa", "#e0795f", "#6ee7b7"];
   const costAgents: ModelStat[] = agents
     .filter(a => a.cost > 0)
-    .map(a => {
-      const hash = a.agent.split("").reduce((s, c) => s + c.charCodeAt(0), 0);
-      return {
+    .map((a, i) => ({
         name: a.agent,
         vendor: "",
         tokens: a.tokens,
         cost: a.cost,
-        color: PALETTE[hash % PALETTE.length],
+        color: agentColor(i),
         priced: true,
         costSource: "pricing",
-      };
-    });
+      }
+    ));
   return (
     <>
       <div style={{ marginBottom: 9 }}><Label t={theme}>{tr.tokensByAgent}</Label></div>
       {agents.length === 0 ? (
         <div style={{ font: `500 10.5px ${theme.mono}`, color: theme.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>
       ) : (
-        agents.map((a, i) => <AgentRow key={i} a={a} max={max} theme={theme} share={shares[i]} />)
+        agents.map((a, i) => <AgentRow key={i} a={a} max={max} theme={theme} share={shares[i]} color={agentColor(i)} />)
       )}
       {costAgents.length > 0 && (
         <>
