@@ -38,6 +38,7 @@ struct Event {
     code_files: u64,
     code_diffs: u64,
     session_duration_ms: i64,
+    session_time_created_ms: i64,
     session_title: String,
 }
 
@@ -213,11 +214,23 @@ fn compute_event(r: &RawEvent, cfg: &UserConfig, pricing: &Pricing) -> Event {
         code_files: r.code_files,
         code_diffs: r.code_diffs,
         session_duration_ms: r.session_duration_ms,
+        session_time_created_ms: r.session_time_created_ms,
         session_title: r.session_title.clone(),
     }
 }
 
 // ── aggregation helpers ────────────────────────────────────────────
+struct SessionAccum {
+    id: String,
+    title: String,
+    agent: String,
+    tokens: f64,
+    cost: f64,
+    dur_ms: i64,
+    time_created_ms: i64,
+    last_active_ms: i64,
+}
+
 #[derive(Default)]
 struct Agg {
     input: f64,
@@ -246,8 +259,8 @@ struct Agg {
     code_files: u64,
     code_diffs: u64,
     code_sessions: HashSet<String>, // track which sessions we've already counted
-    // ── session info for listing ─────────────────────────────────
-    session_info: Vec<(String, String, String, f64, f64, i64, i64)>, // (id, title, agent, tokens, cost, dur_ms, created_ms)
+    // ── session info for listing (accumulated across all messages) ──
+    session_map: HashMap<String, SessionAccum>,
 }
 
 impl Agg {
@@ -275,18 +288,31 @@ impl Agg {
                 self.code_diffs += e.code_diffs;
             }
         }
-        // ── session info: collect one entry per unique session ────
-        if is_new_session {
-            let total_tok = e.input + e.cache + e.output + e.reasoning;
-            self.session_info.push((
-                e.session.clone(),
-                e.session_title.clone(),
-                e.agent.clone(),
-                total_tok,
-                e.cost,
-                e.session_duration_ms,
-                e.ts.timestamp_millis(),
-            ));
+        // ── session info: accumulate per-session totals ────────────
+        if !e.session.is_empty() {
+            let msg_total = e.input + e.cache + e.output + e.reasoning;
+            let msg_time = e.ts.timestamp_millis();
+            let sess = self.session_map.entry(e.session.clone()).or_insert_with(|| {
+                SessionAccum {
+                    id: e.session.clone(),
+                    title: e.session_title.clone(),
+                    agent: e.agent.clone(),
+                    tokens: 0.0,
+                    cost: 0.0,
+                    dur_ms: e.session_duration_ms,
+                    time_created_ms: if e.session_time_created_ms > 0 {
+                        e.session_time_created_ms
+                    } else {
+                        msg_time
+                    },
+                    last_active_ms: 0,
+                }
+            });
+            sess.tokens += msg_total;
+            sess.cost += e.cost;
+            if msg_time > sess.last_active_ms {
+                sess.last_active_ms = msg_time;
+            }
         }
         // Slash-command skill events carry no model (empty) — they're not LLM
         // requests, so they must not inflate request counts or the model split.
@@ -399,23 +425,22 @@ impl Agg {
     }
 
     fn recent_sessions(&self, limit: usize) -> Vec<SessionInfo> {
-        let mut tuples: Vec<_> = self.session_info.clone();
-        // Sort by time created descending (most recent first)
-        tuples.sort_by(|a, b| b.6.cmp(&a.6)); // .6 = created_ms
-        tuples.truncate(limit);
-        tuples
-            .into_iter()
-            .map(|(id, title, agent, tokens, cost, dur_ms, created_ms)| {
-                let ts = DateTime::from_timestamp_millis(created_ms)
+        let mut v: Vec<&SessionAccum> = self.session_map.values().collect();
+        // Sort by most recently active first
+        v.sort_by(|a, b| b.last_active_ms.cmp(&a.last_active_ms));
+        v.truncate(limit);
+        v.into_iter()
+            .map(|s| {
+                let ts = DateTime::from_timestamp_millis(s.time_created_ms)
                     .unwrap_or_default()
                     .with_timezone(&Local);
                 SessionInfo {
-                    id,
-                    session_title: title,
-                    agent,
-                    tokens: (tokens / 1e6 * 100.0).round() / 100.0,
-                    cost: (cost * 100.0).round() / 100.0,
-                    duration_secs: (dur_ms.max(0) / 1000) as u64,
+                    id: s.id.clone(),
+                    session_title: s.title.clone(),
+                    agent: s.agent.clone(),
+                    tokens: (s.tokens / 1e6 * 100.0).round() / 100.0,
+                    cost: (s.cost * 100.0).round() / 100.0,
+                    duration_secs: (s.dur_ms.max(0) / 1000) as u64,
                     time_created: ts.to_rfc3339(),
                 }
             })

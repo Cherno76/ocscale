@@ -42,6 +42,8 @@ pub struct RawEvent {
     pub code_diffs: u64,
     /// Session duration in milliseconds (time_updated - time_created)
     pub session_duration_ms: i64,
+    /// Session creation time in ms epoch (from session table)
+    pub session_time_created_ms: i64,
     /// Session title (user-provided or auto-generated)
     pub session_title: String,
 }
@@ -79,7 +81,8 @@ fn parse_message(
     project_id: String, project_name: String,
     agent: String, code_additions: u64, code_deletions: u64,
     code_files: u64, code_diffs: u64,
-    session_duration_ms: i64, session_title: String,
+    session_duration_ms: i64, session_time_created_ms: i64,
+    session_title: String,
 ) -> Option<RawEvent> {
     let v: serde_json::Value = serde_json::from_str(data).ok()?;
 
@@ -149,6 +152,7 @@ fn parse_message(
         code_files,
         code_diffs,
         session_duration_ms,
+        session_time_created_ms,
         session_title,
     })
 }
@@ -177,8 +181,9 @@ fn query_events() -> Result<Vec<RawEvent>, rusqlite::Error> {
          FROM message m
          JOIN session s ON m.session_id = s.id
          LEFT JOIN project p ON s.project_id = p.id
-         WHERE json_extract(m.data, '$.role') = 'assistant'
-           AND json_extract(m.data, '$.tokens.input') > 0
+          WHERE json_extract(m.data, '$.role') = 'assistant'
+            AND (json_extract(m.data, '$.tokens.input') > 0
+                 OR json_extract(m.data, '$.tokens.output') > 0)
          ORDER BY json_extract(m.data, '$.time.created') ASC",
     )?;
 
@@ -209,18 +214,19 @@ fn query_events() -> Result<Vec<RawEvent>, rusqlite::Error> {
             } else {
                 0
             };
+            let session_time_created_ms = time_created;
             Ok((id, session_id, data, project_id, project_name,
                 agent, code_additions, code_deletions, code_files, code_diffs,
-                session_duration_ms, session_title))
+                session_duration_ms, session_time_created_ms, session_title))
         })?
         .filter_map(|r| r.ok())
         .filter_map(|(id, session_id, data, project_id, project_name,
                        agent, code_additions, code_deletions, code_files, code_diffs,
-                       session_duration_ms, session_title)| {
+                       session_duration_ms, session_time_created_ms, session_title)| {
             parse_message(
                 id, session_id, &data, project_id, project_name,
                 agent, code_additions, code_deletions, code_files, code_diffs,
-                session_duration_ms, session_title,
+                session_duration_ms, session_time_created_ms, session_title,
             )
         })
         .collect();
