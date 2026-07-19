@@ -647,7 +647,7 @@ function AgentsTab({ dash, theme, tr }: { dash: Dashboard; theme: Theme; tr: Dic
 // ── Code tab ──────────────────────────────────────────────────────
 function CodeTab({ dash, theme, tr }: { dash: Dashboard; theme: Theme; tr: Dict }) {
   const cm = dash.codeMetrics || { additions: 0, deletions: 0, files: 0, diffs: 0 };
-  const hasCode = cm.additions > 0 || cm.deletions > 0 || cm.files > 0 || cm.diffs > 0;
+  const hasCode = cm.additions > 0 || cm.files > 0;
   return (
     <>
       <div style={{ marginBottom: 9 }}><Label t={theme}>{tr.codeActivity}</Label></div>
@@ -656,9 +656,7 @@ function CodeTab({ dash, theme, tr }: { dash: Dashboard; theme: Theme; tr: Dict 
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           <MiniStat label={tr.linesAdded} value={fmtInt(cm.additions)} theme={theme} accent="#27b06e" />
-          <MiniStat label={tr.linesDeleted} value={fmtInt(cm.deletions)} theme={theme} accent="#e0795f" />
           <MiniStat label={tr.filesChanged} value={fmtInt(cm.files)} theme={theme} />
-          <MiniStat label={tr.diffsCount} value={fmtInt(cm.diffs)} theme={theme} />
         </div>
       )}
       <SectionRule t={theme} />
