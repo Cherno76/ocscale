@@ -4,7 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { domToPng } from "modern-screenshot";
 import {
-  Dashboard, PeriodReport, ModelStat, ProjectStat, AgentStat, CodeMetrics, SessionInfo, Theme, TH,
+  Dashboard, PeriodReport, ModelStat, ProjectStat, AgentStat, SessionInfo, Theme, TH,
   fetchDashboard, fmtInt, fmtTokens, pct, fmtMoney,
 } from "./data";
 import {
@@ -230,7 +230,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
   { dash: Dashboard; dark: boolean; themePref: "dark" | "light" | "system"; onToggleTheme: () => void; openGen: number; active: boolean; lang: Lang; toggleLang: () => void; onRefresh: () => void; version: string }) {
   const t = TH[dark ? "dark" : "light"];
   const { t: tr } = useT();
-  const [tab, setTab] = useState<"Overview" | "Agents" | "Code" | "Sessions">("Overview");
+  const [tab, setTab] = useState<"Overview" | "Agents" | "Sessions">("Overview");
   const periodItems = [tr.day, tr.week, tr.month];
   // Drag the popover by its body (Windows/Linux only — macOS uses the menu-bar
   // NSPanel and is gated out). A real OS window-drag begins only once the
@@ -420,8 +420,8 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
             padding: "0 10px 10px",
             borderBottom: `1px solid ${t.gridLine}`,
           }}>
-            <Segmented value={tab} items={[tr.overview, tr.agents, tr.code, tr.sessionsTab]}
-              itemValues={["Overview","Agents","Code","Sessions"]} theme={t}
+            <Segmented value={tab} items={[tr.overview, tr.agents, tr.sessionsTab]}
+              itemValues={["Overview","Agents","Sessions"]} theme={t}
               onSelect={(v) => setTab(v as any)} />
           </div>
         </div>
@@ -565,7 +565,6 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
         </div>
         </>}
         {tab === "Agents" && <AgentsTab dash={dash} theme={t} tr={tr} />}
-        {tab === "Code" && <CodeTab dash={dash} theme={t} tr={tr} />}
         {tab === "Sessions" && <SessionsTab dash={dash} theme={t} tr={tr} />}
       </div>{/* /scrolling body */}
       </div>
@@ -638,26 +637,6 @@ function AgentsTab({ dash, theme, tr }: { dash: Dashboard; theme: Theme; tr: Dic
             currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate}
             preserveColors />
         </>
-      )}
-      <SectionRule t={theme} />
-    </>
-  );
-}
-
-// ── Code tab ──────────────────────────────────────────────────────
-function CodeTab({ dash, theme, tr }: { dash: Dashboard; theme: Theme; tr: Dict }) {
-  const cm = dash.codeMetrics || { additions: 0, deletions: 0, files: 0, diffs: 0 };
-  const hasCode = cm.additions > 0 || cm.files > 0;
-  return (
-    <>
-      <div style={{ marginBottom: 9 }}><Label t={theme}>{tr.codeActivity}</Label></div>
-      {!hasCode ? (
-        <div style={{ font: `500 10.5px ${theme.mono}`, color: theme.faint, padding: "4px 0" }}>{tr.noCodeActivity}</div>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <MiniStat label={tr.linesAdded} value={fmtInt(cm.additions)} theme={theme} accent="#27b06e" />
-          <MiniStat label={tr.filesChanged} value={fmtInt(cm.files)} theme={theme} />
-        </div>
       )}
       <SectionRule t={theme} />
     </>
