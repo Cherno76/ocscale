@@ -1,116 +1,102 @@
-# Tokenscope
+# OCScale
 
 **English** · [中文](README-zh.md)
 
-<a href="https://www.producthunt.com/products/tokenscope-2?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-tokenscope-2" target="_blank" rel="noopener noreferrer"><img alt="Tokenscope - MacOS menu-bar dashboard for Claude CLI token usage | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1165012&amp;theme=light&amp;t=1780816780292"></a>
-
-A **menu-bar / system-tray app for macOS and Windows** that shows your Claude CLI **daily token usage, estimated cost, and per-model / MCP / Skill call breakdown**.
+A **menu-bar / system-tray app for macOS and Windows** that shows your OpenCode CLI
+**daily token usage, estimated cost, and per-model / project / agent / MCP / Skill
+breakdown**.
 
 Stack: **Tauri 2 + React + TypeScript** (frontend) / **Rust** (data layer).
 
-![Tokenscope panel (dark / light)](docs/screenshot.png)
+![OCScale panel](docs/screenshot.png)
 
 ## What it does
 
-- Shows today's token count next to the menu-bar icon (e.g. `⬡ 14.00M`)
-- Click to open the panel: Day / Week / Month toggle
-- Metrics: total tokens (input/output), estimated cost, requests / sessions
-- Three breakdowns: **by model** / **by MCP call** / **by Skill call**
-- Cost donut (hover for a single model), year-long activity heatmap
-- **Counts only the MCP servers / Skills you installed yourself** — all Claude built-in tools and Anthropic's bundled MCP servers are filtered out
+- Shows today's token count next to the menu-bar icon (e.g. `⬡ 14.00M`); on Windows the
+  same number is exposed through the tray tooltip, since the tray API has no text label
+- Click the tray icon to toggle the panel: Day / Week / Month, each compared against the
+  previous period with a percentage delta
+- Metrics: total tokens (input / cache / output / reasoning), estimated cost, requests /
+  sessions
+- Breakdowns: **by model**, **by project**, **by agent**, **by MCP call**, **by Skill
+  call** — with a cost donut (hover for a single entry) and a ~26-week activity heatmap
+- Three tabs: **Overview / Agents / Sessions** (the Code tab was removed — OpenCode's DB
+  never populates code stats)
+- **Counts only the MCP servers / Skills you installed yourself** — all OpenCode
+  built-in tools are filtered out
+- Extras: 100M-token milestone confetti, save-screenshot to Desktop, launch-at-login
+  preference, dark/light/system theme, EN/中文 UI
 
-## Data sources (zero-intrusion, read-only)
+## Data sources (zero-intrusion)
 
-| Purpose | Path |
-|---------|------|
-| Session logs (tokens / model / tool calls) | `~/.claude/projects/**/*.jsonl` |
-| User MCP whitelist | `~/.claude.json` → `mcpServers` + `projects[*].mcpServers` |
-| User Skill whitelist | `~/.claude/skills/` directory |
-| Model prices | **Primary**: [models.dev](https://models.dev/api.json) (bare model names, matching Claude CLI logs) → **Fallback**: [LiteLLM](https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json) → built-in snapshot. Cached in `~/Library/Caches/tokenscope/`, refreshed every 24h, with offline fallback |
+The app only ever **reads** OpenCode's data — it never writes to or modifies it.
+
+| Purpose | Source |
+|---------|--------|
+| Messages (tokens / model / tool calls) | OpenCode SQLite DB — `$XDG_DATA_HOME/opencode/opencode.db` or `~/.local/share/opencode/opencode.db` |
+| User MCP whitelist | `~/.config/opencode/opencode.json` → `mcp` object keys |
+| User Skill whitelist | `~/.config/opencode/skills/` directory |
+| Model prices | **Primary**: [models.dev](https://models.dev/api.json) → **Fallback**: [LiteLLM](https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json) → built-in snapshot. Cached in `~/Library/Caches/ocscale/` (platform cache dir), refreshed every 24h, offline fallback |
 
 ### Key processing
-- Deduplicated by `message.id` (streaming/retries repeat the same usage); when one message spans multiple lines, its tool calls are merged and the token usage is counted once
-- Token split: `input` (uncached) / `cache` (creation+read) / `output`; the UI folds cache into "In" by default and shows a separate "cached %"
-- Price matching: exact id → normalized id (strip vendor prefix + `.`↔`p`, e.g. `glm-5.1`⇄`glm-5p1`); models.dev's official bare-name price wins
-- Cost is priced per the four token types; each model carries a `priced` flag — **models not found in either source still count tokens but are labelled "no price" in the UI**
-- Logs contain only the bare model name (no vendor) → third-party models default to the official vendor price (an estimate)
-- Tool classification: `mcp__<server>__*` where the server is in your config → MCP; a Skill call (the `Skill` tool's `input.skill`, or a `/skill` slash command) whose name is in your skills directory → Skill; everything else is ignored
 
-> Cost is an **estimate** based on public prices; subscription users should read it as "equivalent spend value".
+- One **assistant message** = one event; per-message timestamps give accurate hourly
+  charts, while session-level metadata (agent, project, title) comes from the `session`
+  / `project` tables
+- Token split: `input` (uncached) / `cache` (creation + read) / `output` / `reasoning`;
+  the UI folds cache into "In" and shows a separate "cached %"
+- Price matching: exact model name → normalized name (strip vendor prefix + `.`↔`p`,
+  e.g. `glm-5.1`⇄`glm-5p1`); models.dev's official bare-name price wins
+- Cost is priced per token type; each model carries a `priced` flag — **models not found
+  in any source still count tokens but are labelled "no price"**. OpenCode's own
+  per-message `cost` field is used as a fallback for unrecognised models
+- Tool classification: `{server}_{tool}` names whose prefix is in your OpenCode config
+  → MCP; the `skill` tool's `state.input.name` matching your skills directory → Skill;
+  built-in tools (`read`, `write`, `edit`, `bash`, `grep`, `glob`, `task`, `todowrite`,
+  `question`, `webfetch`, …) are ignored
+
+> Cost is an **estimate** based on public prices; treat it as "equivalent spend value".
 
 ### Token types & cost formula
 
-Every assistant message's `usage` reports four **mutually exclusive** token counts (they never double-count the same token):
+Every assistant message's `tokens` object reports mutually exclusive counts:
 
-| Stage | `usage` field | What it is | Price (relative to input) |
-|-------|---------------|------------|---------------------------|
-| **Input** (uncached) | `input_tokens` | New prompt tokens sent this turn | 1× |
-| **Cache write** | `cache_creation_input_tokens` | Context written into the prompt cache | ~1.25× |
-| **Cache read** (hit) | `cache_read_input_tokens` | Context replayed from the cache | ~0.1× (much cheaper) |
-| **Output** | `output_tokens` | Tokens the model generated | ~5× |
-
-**Tokens** (per period, summed over messages):
-
-```
-total  = input + cache_creation + cache_read + output
-# the UI shows:  In = input + cache_creation + cache_read,  Out = output,  cached % = cache_read / total
-```
-
-**Cost** (each stage priced at its own per-token rate from the price table):
+| Stage | DB field | What it is |
+|-------|----------|------------|
+| **Input** (uncached) | `tokens.input` | New prompt tokens sent this turn |
+| **Cache write** | `tokens.cache.write` | Context written into the prompt cache |
+| **Cache read** (hit) | `tokens.cache.read` | Context replayed from the cache |
+| **Output** | `tokens.output` | Tokens the model generated |
+| **Reasoning** | `tokens.reasoning` | Reasoning tokens, billed at the output rate |
 
 ```
-cost = input            × price.input
-     + cache_creation   × price.cache_creation
-     + cache_read       × price.cache_read     # cache hits billed at the discounted read rate
-     + output           × price.output
+total = input + cache.write + cache.read + output + reasoning
+
+cost  = input      × p.input
+      + cache.write × p.cache_create
+      + cache.read  × p.cache_read    # cache hits billed at the discounted read rate
+      + output      × p.output
+      + reasoning   × p.output
 ```
 
-So a cache hit is **not** billed as normal input — it uses the dedicated (cheaper) `cache_read` rate, which is why heavily-cached usage shows a huge token count but a modest cost. The UI folds cache into "In" for display only; billing always uses the four separate rates above.
+Cache hits are **not** billed as normal input — they use the dedicated (cheaper)
+`cache_read` rate, which is why heavily-cached usage shows a large token count but a
+modest cost.
 
 ## Install
 
-### Option 1: Homebrew (recommended)
+Download the latest release from
+[GitHub Releases](https://github.com/Cherno76/ocscale/releases) (`.dmg` on macOS, NSIS
+`.exe` on Windows), or build from source (below).
 
-```bash
-brew install --cask hdusy/tokenscope/tokenscope
-```
+Because builds are **unsigned / unnotarized**:
 
-The cask's `postflight` strips the quarantine attribute (`xattr -cr`) automatically, so **it opens on first launch without the "Apple cannot verify" prompt**.
+- **macOS**: Gatekeeper blocks the first launch — right-click the app → **Open** →
+  confirm, or run `xattr -cr /Applications/OCScale.app` once
+- **Windows**: SmartScreen warns on first run — click **More info → Run anyway**
 
-After you open it once it registers as a login item, then **launches in the menu bar automatically on every boot**.
-
-Upgrade:
-
-```bash
-brew update && brew upgrade --cask tokenscope
-```
-
-### Option 2: Download the .dmg
-
-1. Download the latest `Tokenscope_*_universal.dmg` from [Releases](https://github.com/HduSy/tokenscope/releases) (works on both Apple Silicon and Intel)
-2. Drag it into Applications
-3. Because the build is **unsigned / unnotarized**, Gatekeeper blocks the first launch — pick one:
-   - Right-click the app → **Open** → confirm **Open** again, or
-   - Run once in the terminal:
-     ```bash
-     xattr -cr /Applications/Tokenscope.app && open /Applications/Tokenscope.app
-     ```
-
-> Unsigned is a current known limitation. A true "double-click to open" experience requires Apple Developer ID signing + notarization — see `PRD.md` §6.4.
-
-### Option 3: Install on Windows
-
-1. Download the latest `Tokenscope_*_x64-setup.exe` from [Releases](https://github.com/HduSy/tokenscope/releases)
-2. Double-click to install. Because the build is **unsigned**, Windows SmartScreen will warn on first run — click **More info → Run anyway**
-3. The app installs per-user (no admin required) and registers itself for **launch at login** automatically
-4. Requirements: **Windows 10 1803+ / Windows 11** with the WebView2 runtime (preinstalled on Windows 11; Windows 10 users without it will be prompted by the installer)
-
-### After first launch
-
-- **macOS**: an icon plus today's token count appears in the menu bar (e.g. `⬡ 12.40M`)
-- **Windows**: the tray icon appears in the notification area. The Windows tray API doesn't show a label beside the icon — **hover the tray icon** to see today's token count in the tooltip (e.g. `Tokenscope · today 12.40M`)
-- Left-click the icon to toggle the panel; right-click for the menu (Open / Refresh / Quit)
-- **Launch-at-login is set up automatically** — no manual configuration needed
+The app installs per-user, registers launch-at-login, and starts in the menu bar / tray
+(no Dock icon, no window at launch).
 
 ## Develop
 
@@ -119,7 +105,8 @@ pnpm install
 pnpm tauri dev         # launch the desktop app (requires the Rust toolchain)
 ```
 
-Frontend-only preview (using the real-data snapshot `public/dev-dashboard.json`):
+Frontend-only preview (uses a real-data snapshot `public/dev-dashboard.json`, which is
+gitignored and machine-specific):
 
 ```bash
 pnpm dev               # http://localhost:1420
@@ -127,28 +114,41 @@ pnpm dev               # http://localhost:1420
 cd src-tauri && cargo run --example dump > ../public/dev-dashboard.json
 ```
 
+Rust unit tests (milestone logic):
+
+```bash
+cargo test -p ocscale
+```
+
 ## Build
 
 ```bash
-pnpm tauri build       # outputs .app / .dmg on macOS, .exe (NSIS) on Windows to src-tauri/target/release/bundle/
+pnpm tauri build       # .app / .dmg on macOS, .exe (NSIS) on Windows
 ```
 
-For distribution see `PRD.md` §6.3 (Homebrew Cask recommended on macOS; direct `.dmg` / `.exe` downloads benefit from code signing + notarization).
+Artifacts land in `src-tauri/target/release/bundle/`. CI builds on `git push --tags`
+with a `v*` tag; the macOS leg also updates the Homebrew Cask tap. See `AGENTS.md` for
+the versioning rules (every code change bumps PATCH; the three version files stay in
+sync).
 
 ## Structure
 
 ```
-src/                  React frontend
+src/                  React frontend (5 files)
   data.ts             types + Tauri bridge + theme + formatting
-  charts.tsx          chart primitives (bars / donut / sparkline / heatmap / segmented control)
+  charts.tsx          chart primitives (bars / donut / sparkline / heatmap / segmented)
   App.tsx             main panel
-src-tauri/src/
-  store.rs            incremental JSONL ingest (dedup by message.id + multi-line merge)
+  i18n.ts             EN/ZH dictionaries
+  main.tsx            entry
+
+src-tauri/src/        Rust backend (7 files)
+  store.rs            OpenCode SQLite → RawEvent (+ tool-call classification)
   parser.rs           aggregation (Day/Week/Month + heatmap)
   pricing.rs          models.dev / LiteLLM price loading and costing
   config.rs           user MCP / Skill whitelist
   model.rs            data structures returned to the frontend
-  lib.rs              Tauri commands + menu-bar tray
+  lib.rs              Tauri commands + menu-bar tray + NSPanel
+  main.rs             entry
 ```
 
 ## Bug log

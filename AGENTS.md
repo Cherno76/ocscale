@@ -11,7 +11,7 @@ pnpm dev                         # frontend-only preview at http://localhost:142
 pnpm tauri build                 # production .app/.dmg (macOS) or .exe (Windows)
 cargo test -p ocscale         # Rust unit tests (src-tauri/src/lib.rs inline)
 # regenerate dev mock snapshot:
-cargo run --example dump > public/dev-dashboard.json  # in src-tauri/
+cd src-tauri && cargo run --example dump > ../public/dev-dashboard.json
 ```
 
 - `pnpm build` runs `tsc && vite build` — typecheck comes first, then bundle.
@@ -55,7 +55,7 @@ App.tsx + charts.tsx (React, custom SVG charts — no chart library)
 
 - **Primary**: OpenCode SQLite database at `$XDG_DATA_HOME/opencode/opencode.db` or `~/.local/share/opencode/opencode.db`.
 - **Pricing**: models.dev API → LiteLLM → built-in snapshot (`src-tauri/snapshots/litellm.json`). Cached at `~/Library/Caches/ocscale/` (macOS) / platform cache dir, refreshed every 24h.
-- **MCP/Skill tracking**: NOT YET IMPLEMENTED for OpenCode. `config.rs` returns empty whitelists. The `mcp`/`skills` fields in `RawEvent` are always empty. User config reading from OpenCode config is future work.
+- **MCP/Skill tracking**: implemented for OpenCode. `config.rs` reads user MCP server names from `~/.config/opencode/opencode.json` (`mcp` object keys) and skill names from the `~/.config/opencode/skills/` directory. `store.rs` classifies tool calls from the `part` table: built-in tools are filtered, `{server}_{tool}` names whose prefix matches a configured MCP server count as MCP, and the `skill` tool's `state.input.name` counts as a Skill call.
 - Price matching: exact model name → normalized (strip vendor prefix after `/`, `.`↔`p`). Unmatched models still count tokens but show "no price" label.
 - OpenCode's per-message `cost` field is used as a fallback when the pricing module doesn't recognise a model.
 

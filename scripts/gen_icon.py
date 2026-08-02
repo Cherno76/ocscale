@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the Tokenscope app icon: a black rounded tile with a blue
+"""Generate the OCScale app icon: a black rounded tile with a blue
 bar-chart glyph, on a FULLY TRANSPARENT background (rounded corners are
 transparent, not white). Renders at 4x and downsamples for clean anti-aliasing.
 

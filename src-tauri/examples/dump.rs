@@ -1,3 +1,3 @@
 fn main() {
-    println!("{}", tokenscope_lib::dashboard_json());
+    println!("{}", ocscale_lib::dashboard_json());
 }

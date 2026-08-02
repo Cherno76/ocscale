@@ -1,350 +1,251 @@
-# TokenScope 产品需求文档（PRD）
+# OCScale 产品需求文档（PRD）
+
+> 本文档描述当前实现状态。项目前身为 TokenScope（监控 Claude CLI 的 JSONL 日志），
+> 2026 年 7 月迁移到 OpenCode SQLite 数据源并更名 OCScale。数据源与配置路径以
+> 本文档及 `AGENTS.md` 为准。
 
 ## 1. 产品概述
 
 ### 1.1 产品名称
-TokenScope —— macOS 菜单栏 Claude CLI 用量仪表盘
+OCScale —— macOS 菜单栏 / Windows 托盘 OpenCode CLI 用量仪表盘
 
 ### 1.2 一句话定位
-一个常驻 macOS 菜单栏的小工具，实时展示 Claude CLI 的 Token 用量、调用统计和使用花费，让用户对自己的 AI 编码消耗"心中有数"。
+一个常驻系统菜单栏 / 托盘的小工具，实时展示 OpenCode CLI 的 Token 用量、调用统计
+和估算花费，让用户对自己的 AI 编码消耗「心中有数」。
 
 ### 1.3 目标用户
-- 频繁使用 Claude CLI / Claude Code 的开发者
-- 关心 Token 消耗、订阅性价比、工具使用习惯的个人用户
+- 频繁使用 OpenCode CLI 的开发者
+- 关心 Token 消耗、估算花费、工具使用习惯的个人用户
 - 希望了解自己 AI 工作流中哪些 MCP / Skill 真正在被使用的人
 
 ### 1.4 解决的问题
-- Claude CLI 自带的 `/cost` 只能看当前会话，无法纵向看每日/每周/每月趋势
-- 不知道自己装的 MCP、Skill 哪些在用、哪些是"装了不用"占 context
-- 没有按项目、按模型维度的消耗洞察
+- OpenCode 自带的查看方式无法纵向看每日 / 每周 / 每月趋势
+- 不知道自己装的 MCP、Skill 哪些在用、哪些是「装了不用」
+- 缺少按项目、按 Agent、按模型的消耗洞察
 - 缺少常驻、随时可见的用量提醒入口
-
----
 
 ## 2. 核心功能
 
-### 2.1 菜单栏常驻入口
-- macOS 菜单栏右上角图标 + 当日 Token 消耗数（如「今日 1.2M tokens」，自动按 K / M 缩写）
-- 仅展示 Token 数，不在菜单栏直接显示花费金额
-- 点击展开浮窗 / 打开详细仪表盘
-- 后台轮询日志，准实时更新
+### 2.1 菜单栏 / 托盘常驻入口
+- macOS：菜单栏图标 + 当日 Token 数（如「⬡ 14.00M」）
+- Windows：托盘图标；托盘 API 无文字标签，同一数字通过悬停 tooltip 展示
+- 点击托盘图标开 / 关浮窗面板；后台 30s 轮询 OpenCode 数据库，准实时更新
+- 开机自启默认开启（偏好持久化于数据目录），可在面板内关闭
+- 单实例：重复启动只唤起已运行实例并展开面板，不出现第二个图标
 
 ### 2.2 用量仪表盘（核心）
-
 #### 时间维度
-- 今日 / 本周 / 本月
-- 时段趋势图（按小时 / 按天）
+- 今日 / 本周 / 本月，各自对比上一周期（昨日 / 上周 / 上月）显示百分比增减
 
 #### 核心指标
 | 指标 | 说明 |
 |------|------|
-| 会话数 | 按 sessionId 去重计数 |
-| 消息数 | assistant message 数（按 message.id 去重） |
-| Token 用量 | input / output 总量 |
-| 估算花费 | 基于 LiteLLM 公开价格表估算（USD，UI 始终带「est.」标识），订阅用户应理解为「等效消费价值」而非真实账单；未在价格表内的模型仅显示 Token 数，不计入花费 |
+| 会话数 | 按 session 去重计数 |
+| 请求数 | 每条 assistant 消息计 1（无模型事件不计） |
+| Token 用量 | input / cache / output / reasoning 四类求和 |
+| 估算花费 | 按公开价格表估算（USD）；未定价模型不计入，UI 标注「暂无定价」 |
 
-#### 多维度切片
-仪表盘核心三个切片维度：
+#### 多维切片
+- **按模型**：token 与花费分布（未识别模型仍计 token、标注 no price）
+- **按项目**：token 与花费分布、会话数
+- **按 Agent**：token、花费、请求数、会话数
+- **按 MCP 调用**：用户安装的 server 各自调用次数
+- **按 Skill 调用**：用户安装的 skill 各自调用次数
 
-- **按模型** 分布（Opus / Sonnet / Haiku，以及第三方模型如 GLM、DeepSeek）—— 看 token & 花费在不同模型上的分布
-- **按 MCP 调用** 分布 —— 用户安装的 MCP 各自被调用了多少次
-- **按 Skill 调用** 分布 —— 用户安装的 Skill 各自被调用了多少次
+#### 可视化
+- 时段堆叠柱状图（按小时 / 按天，含 reasoning / output / cache+input）
+- 费用甜甜圈（hover 查看单项）
+- 约 26 周每日活跃热力图（0–4 级强度）
 
-### 2.3 工具调用统计（**只展示用户自定义安装的**）
+### 2.3 工具调用统计（只展示用户自定义安装的）
+> 仅统计用户自己安装的 MCP 和 Skill，OpenCode 内置工具一律过滤。
 
-> **明确策略：仅展示用户自己安装的 MCP 和 Skill，Claude 内置工具（Bash/Read/Edit 等）和 Anthropic 自带 MCP（Claude_Preview 等）一律过滤。**
+- MCP：`part` 表工具名形如 `{server}_{tool}`，且 server 在 `opencode.json` 的
+  `mcp` 对象中
+- Skill：`skill` 工具的 `state.input.name` 命中 `~/.config/opencode/skills/` 目录
 
-#### 用户 MCP 调用
-- 数据源：`~/.claude.json` 的 `mcpServers`（含 user 级和 project 级）
-- 展示：按 server 聚合调用次数排行（不下钻到具体工具）
-- 价值：发现高频 MCP、识别"装了没用"的 MCP
-
-#### 用户 Skill 调用
-- 数据源：`~/.claude/skills/` 目录
-- 展示：按 skill 名称排行
-- 提取方式：`tool_use.name == "Skill"` 时读 `input.skill` 字段
-
----
+### 2.4 附加功能
+- 每 100M Token 里程碑触发全屏彩带庆祝（快照持久化，跨重启不重复触发；首启只
+  基线不庆祝）
+- 面板截图保存到桌面（DOM 截图，绕过 macOS 录屏权限）
+- 深色 / 浅色 / 跟随系统主题（macOS 通过原生通知同步系统外观）
+- EN / 中文 双语界面（localStorage 记住选择）
 
 ## 3. 数据来源与采集
 
-### 3.1 主数据源
-**Claude CLI 会话日志**
+### 3.1 主数据源（只读）
+OpenCode SQLite 数据库，应用只做 SELECT 查询，绝不写入 / 修改：
 
-- **路径**：`~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`
-- **格式**：JSONL，每行一个事件
-- **关键事件类型**：
-  - `user` —— 用户消息（含 timestamp / cwd / gitBranch / version）
-  - `assistant` —— 模型响应（含 model / usage / content）
-  - `attachment` —— 附加内容（如 skill_listing）
+- 路径：`$XDG_DATA_HOME/opencode/opencode.db` 或 `~/.local/share/opencode/opencode.db`
+- 核心表：
+  - `message` —— 每条 assistant 消息的 JSON `data`（role / tokens / modelID / cost /
+    time.created / time.completed）
+  - `session` —— 会话元数据（agent、project_id、title、time_created / time_updated、
+    summary_*）
+  - `project` —— 项目名称
+  - `part` —— 消息内的 tool 调用（MCP / Skill 分类依据）
 
 ### 3.2 Assistant 消息核心字段
 ```json
 {
-  "type": "assistant",
-  "message": {
-    "model": "claude-opus-4-7",
-    "id": "msg_xxx",
-    "usage": {
-      "input_tokens": 10,
-      "output_tokens": 817,
-      "cache_creation_input_tokens": 42582,
-      "cache_read_input_tokens": 0
-    },
-    "content": [
-      { "type": "thinking", "thinking": "..." },
-      { "type": "text", "text": "..." },
-      { "type": "tool_use", "name": "Bash", "input": {...} }
-    ]
+  "role": "assistant",
+  "modelID": "anthropic/claude-sonnet-4-6",
+  "tokens": {
+    "input": 1234,
+    "output": 567,
+    "reasoning": 89,
+    "cache": { "write": 100, "read": 2000 }
   },
-  "timestamp": "2026-06-03T15:23:03.366Z",
-  "sessionId": "...",
-  "cwd": "/Users/.../project",
-  "gitBranch": "main",
-  "version": "2.1.160"
+  "cost": 0.01234,
+  "time": { "created": 1780000000000, "completed": 1780000001234 }
 }
 ```
 
-### 3.3 配置数据源（用于"用户自定义"过滤）
-- `~/.claude.json` —— 读取 `mcpServers` 和 `projects[*].mcpServers`
-- `~/.claude/skills/` —— 扫描目录得到用户安装的 Skill 名单
+### 3.3 配置数据源（用户自定义过滤）
+- `~/.config/opencode/opencode.json` → `mcp` 对象键 → MCP server 白名单
+- `~/.config/opencode/skills/` 目录 → Skill 白名单
+- 文件 / 目录不存在时回退为空白名单（面板不展示 MCP / Skill 区块）
 
 ### 3.4 数据采集策略
-- 监听 `~/.claude/projects/**/*.jsonl` 文件变化（fs.watch / FSEvents）
-- 增量解析新增行，避免全量重读
-- 按 `message.id` 去重（同一消息可能因流式/重试出现多条记录）
-- 本地持久化聚合结果（SQLite / 本地 JSON），加速重启与历史查询
-
----
+- 每次构建仪表盘直接查询 SQLite，无本地事件缓存文件；`store.rs` 只做内存级
+  增量比对（`ingest()` 按值比较，无变化则跳过重算）
+- 保留约 210 天窗口（热力图 26 周 + 余量），更早事件裁剪
+- 30s 后台轮询 + 打开面板时即时刷新；不设文件监听器（本地 SQLite 查询成本低）
+- 价格表：启动时后台线程加载，之后每 24h 刷新一次；`OnceLock<RwLock<Arc<Pricing>>>`
+  进程级记忆化，`build_dashboard` 只做廉价 clone，锁内永不联网
 
 ## 4. 分类与过滤规则
 
 ### 4.1 工具调用分类逻辑
 ```
-tool_use.name 判定：
-  1. 在内置工具黑名单中 → 过滤，不展示
-  2. 以 "mcp__" 开头：
-     - server 在用户 mcpServers 配置中 → 展示为「用户 MCP」
-     - 否则 → 过滤（Anthropic 内置 MCP）
-  3. == "Skill"：
-     - input.skill 在 ~/.claude/skills/ 中 → 展示为「用户 Skill」
-     - 否则 → 过滤（bundled skill）
+part.data.tool 判定：
+  1. 在内置工具黑名单中 → 过滤
+  2. 形如 "{server}_{tool}" 且 server 在用户 MCP 配置中 → 用户 MCP
+  3. == "skill" 且 state.input.name 在用户 skills 目录中 → 用户 Skill
   4. 其他 → 过滤
 ```
 
-### 4.2 内置工具黑名单（硬编码）
+### 4.2 内置工具黑名单（硬编码于 store.rs）
 ```
-Bash, Read, Edit, Write, Glob, Grep, Agent,
-TaskCreate, TaskUpdate, TaskList, TaskGet, TaskStop, TaskOutput,
-TodoWrite, NotebookEdit, WebFetch, WebSearch,
-ExitPlanMode, EnterPlanMode, Skill, ToolSearch, AskUserQuestion,
-EnterWorktree, ExitWorktree, ScheduleWakeup,
-CronCreate, CronDelete, CronList
+read, write, edit, bash, grep, glob, globb, task, todowrite,
+question, webfetch, websearch_web_search_exa
 ```
 
 ### 4.3 花费计算
+#### 价格数据源（分层，高优先级先命中）
+1. models.dev（主源，官方裸模型名价格）
+2. LiteLLM 在线表（补 models.dev 缺口）
+3. 内置 LiteLLM 快照（离线兜底，`src-tauri/snapshots/litellm.json`）
+4. 硬编码的少量 Anthropic 模型（最后兜底）
 
-#### 价格数据源
-- **唯一价格源**：LiteLLM 官方维护的开源价格表
-  - URL：`https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json`
-  - 覆盖：Anthropic / OpenAI / Google / 以及主流第三方模型（含 GLM、DeepSeek 等）
-  - 字段：`input_cost_per_token` / `output_cost_per_token` / `cache_creation_input_token_cost` / `cache_read_input_token_cost`
-- **不提供**用户自定义价格表配置入口，避免维护成本与配置错误
+缓存：平台 cache 目录 `ocscale/`（macOS 为 `~/Library/Caches/ocscale/`），24h 有效；
+仅通过结构校验的响应才写入缓存，防止错误响应毒化缓存。
 
-#### 价格表分发策略
-- 应用打包时内置一份 LiteLLM 价格表快照（保证离线可用）
-- 启动时尝试拉取最新版本（失败则使用内置快照）
-- 每 24 小时后台自动刷新一次
+#### 匹配规则
+精确名 → 归一化名（去厂商前缀、`.`↔`p` 统一）。匹配不到的模型：token 照常统计，
+先按 OpenCode 自带 `cost` 字段兜底，仍无则标记「无定价」，不计入花费。
 
-#### 计算公式
+#### 计算公式（reasoning 按 output 单价）
 ```
-cost = input_tokens     × price.input_cost_per_token
-     + output_tokens    × price.output_cost_per_token
-     + cache_creation   × price.cache_creation_input_token_cost
-     + cache_read       × price.cache_read_input_token_cost
+cost = input × p.input
+     + cache.write × p.cache_create
+     + cache.read × p.cache_read
+     + output × p.output
+     + reasoning × p.output
 ```
 
-#### 模型匹配规则
-- 用 `message.model` 字段精确匹配 LiteLLM 表的 key
-- 匹配不到的模型：UI 标记为「未知模型」，不计入花费，但 token 数仍统计
-- 不做模糊匹配 / 别名兜底，避免错算
-
-#### 估算性质说明
-- 明确告知用户：花费为「按官方公开价格估算」
-- Pro/Max 订阅用户实际为包月固定支出，仪表盘展示的金额可理解为「等效消费价值」
-- UI 上始终带 "估算 (est.)" 字样，避免误读为账单
-
----
+#### 估算性质
+花费为「按公开价格估算」，订阅用户应理解为「等效消费价值」而非真实账单；
+UI 始终标注「预估费用」。
 
 ## 5. 数据精度说明
 
 | 指标 | 精度 |
 |------|------|
-| 会话数 | ✅ 精确（sessionId 去重） |
-| 消息数 | ✅ 精确（message.id 去重） |
-| Token 用量 | ✅ 精确（来自 API 返回的 usage） |
-| 用户 MCP 调用次数 | ✅ 精确（命名约定 + 配置白名单） |
-| 用户 Skill 调用次数 | ✅ 精确（input.skill + 目录白名单） |
-| 模型分布 | ✅ 精确 |
-| **花费（USD）** | ✅ 精确（精确 Token 数 × LiteLLM 官方价格；订阅用户为「等效消费价值」） |
-
----
+| 会话数 | ✅ 精确（session 去重） |
+| 请求数 | ✅ 精确（每条 assistant 消息 = 1，无模型事件不计） |
+| Token 用量 | ✅ 精确（来自 OpenCode 记录的 tokens） |
+| 用户 MCP / Skill 调用次数 | ✅ 精确（part 表 + 配置白名单） |
+| 模型 / 项目 / Agent 分布 | ✅ 精确 |
+| **花费（USD）** | ✅ 按公开价格精确计算；无定价模型不计入（估算） |
 
 ## 6. 技术方案
 
-### 6.1 技术栈决策：Tauri + React（已定稿）
+### 6.1 技术栈（已定稿）
+Tauri 2 + Rust + React 18 (TS) + Vite。理由：安装包小、常驻内存低、跨平台，
+UI 复用系统 WebView（macOS 为 WKWebView）；Rust 负责 SQLite 查询、聚合、价格加载。
 
-**最终选型：Tauri + React 前端**
+- 无图表库：全部图表为手写 SVG（`charts.tsx`）
+- 无 lint / formatter 配置（无 ESLint、Prettier、pre-commit hooks）
+- 固定 400×660 不可缩放面板；macOS 转非激活 NSPanel（level 25），可浮于全屏
+  Space，失焦 / 切 Space / 切 App 自动隐藏
+- `parser::build_dashboard()` 是唯一数据入口，由 `BUILD_LOCK` 串行化，在
+  `spawn_blocking` 中调用，绝不在异步运行时内联执行
+- 前端 `pnpm build` = `tsc && vite build`；`strictPort: true`（1420）
 
-#### 候选对比
-| 方案 | 安装包 | 常驻内存 | 跨平台 | 复用现有 HTML | 结论 |
-|------|--------|---------|--------|--------------|------|
-| **Tauri** ✅ | ~3–10MB | ~30–80MB | ✅ | ✅ 直接用 | **选中** |
-| Swift + SwiftUI | ~5–15MB | ~20–50MB | ❌ 仅 macOS | ❌ 需重写 | 排除（不跨平台） |
-| Electron | ~80–150MB | ~100–250MB | ✅ | ✅ 直接用 | 排除（太重） |
-
-#### 决策理由（对齐需求约束）
-1. **未来可能跨平台** → 排除仅支持 macOS 的 Swift
-2. **在意常驻内存，越轻越好** → 排除 Electron（每个 app 打包整个 Chromium，100MB+）；Tauri 复用系统 WebView（macOS 为 WKWebView），体积与内存接近原生
-3. **UI 需要滚动 / hover / 点击 / 图表等丰富交互** → Tauri 的 UI 层即系统 WebView，React 生态的图表库（Recharts / ECharts / Chart.js）可直接使用，现有 `dashboard.html` 的样式与交互可迁移复用
-4. **开发体验** → UI 用熟悉的 React；仅文件读取与日志监听等少量后端逻辑用 Rust（量小、有现成模板）
-
-#### 前端技术细节
-- **框架**：React + TypeScript
-- **构建**：Vite（Tauri 默认集成）
-- **图表**：Recharts 或 ECharts（按模型 / MCP / Skill 的分布图、趋势图）
-- **样式**：可沿用 `dashboard.html` 既有设计，迁移为 React 组件
-
-#### 分工
-- **前端（React + TS）**：仪表盘 UI、图表、交互、菜单栏弹窗
-- **后端（Rust）**：JSONL 增量解析、FS 文件监听、配置加载、LiteLLM 价格表拉取、聚合计算
-- **桥接**：Tauri command / event 在前后端间传递聚合结果
-
-### 6.2 架构概览
+### 6.2 架构
 ```
-┌─────────────────────────────────────────┐
-│        macOS 菜单栏 UI（壳）           │
-├─────────────────────────────────────────┤
-│  仪表盘视图层（图表 / 列表 / 排行）    │
-├─────────────────────────────────────────┤
-│  聚合层（按时间 / 模型 / MCP / Skill）  │
-├─────────────────────────────────────────┤
-│  内存模型 + 文件指纹缓存（轻量）        │
-├─────────────────────────────────────────┤
-│  采集层（FS Watcher + JSONL 增量解析）  │
-├─────────────────────────────────────────┤
-│  配置加载（mcpServers / skills 白名单） │
-└─────────────────────────────────────────┘
-            ↑ 读取
-   ~/.claude/projects/**/*.jsonl
-   ~/.claude.json
-   ~/.claude/skills/
+OpenCode SQLite DB
+    ↓ store.rs（SQL 查询 + part 表工具分类）
+parser.rs::build_dashboard() ← BUILD_LOCK
+    ├── config.rs（MCP / Skill 白名单）
+    └── pricing.rs::Pricing::shared()（记忆化，后台线程 24h 刷新）
+    ↓ model.rs → Dashboard JSON
+Tauri command get_dashboard() / 30s 后台 refresh
+    ↓
+src/data.ts → App.tsx + charts.tsx
 ```
 
-### 6.3 用户安装方式
+### 6.3 安装与分发
+- 产物：macOS `.app` / `.dmg`，Windows NSIS `.exe`（`pnpm tauri build`）
+- CI：`git push --tags`（`v*` tag）触发，`fail-fast: false`，macOS leg 同时更新
+  Homebrew Cask tap
+- 当前未签名 / 未公证：macOS 需右键 → 打开或 `xattr -cr`；Windows 有 SmartScreen
+  提示。CI 的签名 Secret 已注释——无真实 Secret 时不要打开（Tauri 会把空证书
+  当成「有证书」导致构建失败）
 
-按技术栈不同，分发与安装方式如下：
-
-| 技术栈 | 产物 | 安装方式 |
-|--------|------|---------|
-| **Swift + SwiftUI** | `.app` / `.dmg` | 拖入 Applications；或 `brew install --cask tokenscope`（提交到 Homebrew Cask） |
-| **Tauri** | `.dmg` / `.app` | 拖入 Applications；或 Homebrew Cask |
-| **Electron** | `.dmg` / `.app` | 拖入 Applications；或 Homebrew Cask |
-
-#### 推荐分发渠道（优先级）
-1. **Homebrew Cask**（首选）—— 开发者用户习惯 `brew install`，一行命令安装与升级
-2. **GitHub Releases**—— 直接下载 `.dmg`，附自动更新（Sparkle / Tauri Updater）
-3. **直接构建**—— 开源仓库，开发者可自行 `clone + build`
-
-#### 关键安装注意点
-- **代码签名 + 公证（Notarization）**：未签名应用首次打开会被 Gatekeeper 拦截，需 Apple Developer 账号（$99/年）签名公证，否则用户需手动「右键打开」
-- **磁盘访问权限**：应用需读取 `~/.claude/` 目录，沙盒化版本需声明对应权限；非沙盒（非 App Store）版本无需特殊授权
-- **开机自启**：通过 `ServiceManagement` framework（Swift）或对应插件注册 Login Item，设置中可开关
-- **不上架 Mac App Store**（v1）：App Store 沙盒对读取 `~/.claude/` 任意路径限制较多，且审核周期长；优先走 Homebrew / 直接下载
-
-### 6.4 代码签名与公证（Code Signing & Notarization）
-
-为让用户"双击直接打开、无 Gatekeeper 拦截"，并证明发布者身份，需对 macOS 产物做 **Developer ID 签名 + Apple 公证**。
-
-#### 签名层级
-| 层级 | 签名方式 | 用户体验 | 成本 |
-|------|---------|---------|------|
-| 未签名 / Ad-hoc | `codesign -s -` | 首次打开报"无法验证开发者"，需右键→打开 | 免费 |
-| 自签名证书 | 自建证书 | 仍报警告（系统不信任自建根） | 免费但**对外无意义** |
-| **Developer ID**（正解） | Apple 颁发的 `Developer ID Application` 证书 | 双击直开，Gatekeeper 放行 | **$99/年** |
-
-> macOS 上唯一被系统信任、能"证明开发者身份"的方式，是加入 Apple Developer Program，用 Apple 签发的 Developer ID 证书签名。自签名证书系统不认，等同未签名。
-
-#### 正规流程（签名 → 公证 → 钉票）
-现代 macOS（10.15+）仅签名不够，**必须公证**：上传 App 给 Apple 自动扫描，通过后取回票据再"钉"回产物。
-```
-codesign（Developer ID + Hardened Runtime + 时间戳）
-   ↓
-打包 .dmg / .zip
-   ↓
-notarytool submit（上传 Apple，等待 Approved）
-   ↓
-stapler staple（公证票据钉入 .dmg/.app）
-```
-
-#### Tauri 集成
-Tauri 原生支持，配好环境变量后 `tauri build` 自动完成签名+公证：
-- `tauri.conf.json` → `bundle.macOS`：`hardenedRuntime: true`（公证强制要求）、`signingIdentity`（默认 `-` ad-hoc，被环境变量覆盖）
-- 环境变量优先级：`APPLE_SIGNING_IDENTITY` > 配置；未设证书时自动退化为 ad-hoc/未签名，不阻断本地构建
-
-#### CI 自动签名（GitHub Actions）
-`release.yml` 的 `tauri-action` 已预置以下 Secret 占位，**未设置时照常出未签名包**，配齐后打 tag 即自动签名+公证：
-
-| Secret | 内容 |
-|--------|------|
-| `APPLE_CERTIFICATE` | Developer ID `.p12` 的 base64 |
-| `APPLE_CERTIFICATE_PASSWORD` | 导出 `.p12` 时设置的密码 |
-| `APPLE_SIGNING_IDENTITY` | `Developer ID Application: Name (TEAMID)` |
-| `APPLE_ID` | Apple ID 邮箱 |
-| `APPLE_PASSWORD` | App 专用密码（appleid.apple.com 生成，非登录密码） |
-| `APPLE_TEAM_ID` | 10 位 Team ID |
-
-#### 渐进策略
-- **当前（v1 自用/小范围）**：未签名，文档注明"右键→打开"或 `xattr -dr com.apple.quarantine Tokenscope.app`
-- **公开分发（Homebrew Cask / 陌生用户下载）**：上 Developer ID（$99/年），填齐 Secret，签名管线一劳永逸
-
----
+### 6.4 代码签名与公证（远期）
+Developer ID 签名 + 公证是「双击直开」的唯一正解；Tauri 原生支持，配齐
+`APPLE_CERTIFICATE` / `APPLE_ID` 等 Secret 后 `tauri build` 自动完成。当前版本保持
+ad-hoc 签名，文档注明手动放行方式。
 
 ## 7. 非功能需求
 
-- **性能**：菜单栏常驻内存 < 100MB，CPU 空闲时 < 1%
-- **隐私**：所有数据本地处理，不上传任何日志或统计信息
-- **响应**：日志写入后 5 秒内反映到仪表盘
-- **稳定性**：日志解析容错（坏行跳过，不崩溃）
-- **启动**：开机自启可选
-
----
+- **性能**：常驻内存 < 100MB，空闲 CPU 低（30s 轮询，仅数据变化时重算）
+- **隐私**：所有数据本地处理，不上传任何日志；仅价格表联网（models.dev / LiteLLM，
+  每 24h）
+- **响应**：轮询 30s + 打开面板即时刷新（未来可加文件监视器缩短到秒级）
+- **稳定性**：DB 不存在 / 查询失败时返回空仪表盘，不崩溃；价格缓存损坏时回退
+- **启动**：开机自启可选（默认开，偏好持久化于数据目录）
 
 ## 8. 范围与边界
 
-### 8.1 v1.0 范围（MVP）
-- ✅ 菜单栏图标 + 今日用量速览
-- ✅ 详细仪表盘（今日/本周/本月切换）
-- ✅ Token 用量、估算花费、按模型分布
-- ✅ 用户 MCP / Skill 调用统计
+### 8.1 已实现（v0.3.x）
+- 菜单栏 / 托盘图标 + 今日用量速览
+- 仪表盘：今日 / 本周 / 本月 + 对比、模型 / 项目 / Agent / MCP / Skill 分布、
+  费用甜甜圈、26 周热力图
+- 100M 里程碑庆祝、截图、主题、双语、开机自启、单实例
+- Windows 支持（托盘 tooltip、popover 拖拽 + 位置记忆）
 
-### 8.2 不在 v1.0 范围
-- ❌ 跨设备同步
-- ❌ 团队/多用户聚合
-- ❌ Windows / Linux 支持
-- ❌ Web 端
-- ❌ 修改 Claude CLI 配置（只读）
+### 8.2 不在范围
+- ❌ 修改 OpenCode 数据 / 配置（只读）
+- ❌ 跨设备同步、多用户聚合、Web 端
+- ❌ 自定义价格表配置入口
 
 ### 8.3 后续可能扩展
-- 月度报告导出（PDF / Markdown）
+- 文件监视器 / 更短刷新间隔（当前 30s）
 - 预算预警（接近设定金额时通知）
-- 跨平台版本（Tauri 改造）
-- 与其他 AI CLI 工具集成（Cursor、Codex 等）
-
----
+- 月度报告导出（PDF / Markdown）
+- 代码签名 + 公证（正式分发）
+- 与其他 AI CLI 集成（数据源已抽象为 `store.rs → RawEvent`，可扩展新源）
 
 ## 9. 关键决策记录
 
-1. **数据采集方式**：直接解析 JSONL 日志，不通过 hook 或代理 —— 零侵入、零配置
-2. **MCP/Skill 过滤策略**：仅展示用户自定义安装的，过滤所有内置工具和 Anthropic 自带 MCP —— 聚焦真正的"用户行为"，不被高频内置工具淹没
-3. **花费定位**：标注为"估算"，不承诺等同账单 —— 避免与订阅制实际支出混淆
+1. **数据采集**：直接只读查询 OpenCode SQLite，不经过 hook / 代理，零侵入、零配置
+2. **MCP / Skill 过滤**：仅展示用户自定义安装的，过滤全部内置工具，聚焦真正的
+  用户行为
+3. **花费定位**：标注「估算」，不承诺等同账单，避免与订阅制实际支出混淆
+4. **价格分层**：models.dev 主源 → LiteLLM → 内置快照 → OpenCode cost 兜底；
+   未知模型显示「无定价」而非 0 元
+5. **缓存策略**：事件不落本地缓存（SQLite 即真源，210 天窗口内存裁剪）；仅价格表
+   落盘缓存（24h，校验后写入）

@@ -3,42 +3,56 @@
 A record of bugs hit during development, each with its symptom, root cause, and
 fix. Newest first. Useful as a reference for similar issues.
 
+> 项目前身为 TokenScope（监控 Claude CLI 的 JSONL 日志），2026 年 7 月迁移到
+> OpenCode SQLite 数据源并更名 OCScale。「OpenCode era」为本数据源下遇到的问题；
+> 「Early entries」为更名前记录，其中与前端 / 发布 / 行为相关的部分仍适用于当前代码。
+
 ---
 
-## Data accuracy (call counting)
+## OpenCode era
 
-### 1. Skills invoked via slash command were not counted
+### 1. macOS Dock 里出现了菜单栏应用不应有的图标
 
-- **Symptom**: Calling a skill with `/find-skills` never showed up in the panel;
-  the count stayed on an unrelated skill (`summary-recorder`).
-- **Cause**: A slash-command invocation is logged as a **`user` message** with a
-  `<command-name>/find-skills</command-name>` tag — **not** as a `Skill`
-  `tool_use` block. The parser only looked at `tool_use`, so slash-command
-  skills were invisible. (`summary-recorder` was a real, older `Skill` call that
-  happened to fall inside the visible time window.)
-- **Fix**: Added `parse_user_command` in `store.rs` to extract the skill name
-  from the `<command-name>` tag. These command events carry no model/tokens, so
-  `Agg.add` in `parser.rs` guards request/model accounting with
-  `!model.is_empty()` to avoid inflating request counts or creating an
-  empty-named model. Bumped `STORE_VERSION` to force a one-time full rescan.
+- **Symptom**: OCScale 是 Accessory（菜单栏）应用，却在 Dock 中显示图标。
+- **Cause**: 运行时设置了 `ActivationPolicy::Accessory`，但打包的
+  `src-tauri/Info.plist` 缺少 `LSUIElement=true`，系统仍按普通 App 处理。
+- **Fix**: 在 `Info.plist` 中加入 `LSUIElement=true`（de2aa5b）。
 
-### 2. Tool calls dropped when one message spanned multiple log lines
+### 2. Code 页签永远显示 0（OpenCode 不填充代码统计）
 
-- **Symptom**: A model-invoked skill (`skill-creator`) produced a real `Skill`
-  `tool_use`, yet still wasn't counted.
-- **Cause**: A single assistant message (same `message.id`) is split across
-  several JSONL lines — e.g. `thinking` on one line, `tool_use` on the next,
-  **both repeating the same `usage`**. The store deduped **by `message.id` and
-  dropped whole duplicate lines**, so the line carrying the `tool_use` was
-  discarded after the `thinking` line was ingested first. This also silently
-  dropped MCP calls in the same shape.
-- **Fix**: Replaced the drop-on-duplicate logic in `store.rs` with a
-  merge: keep an `id → index` map, and when a line repeats a known id, **merge
-  its `mcp`/`skills` into the existing event without re-counting tokens** (usage
-  is identical across the split lines, so it's still counted once). Bumped
-  `STORE_VERSION` for a full rescan.
+- **Symptom**: 代码活动（新增 / 删除行、文件数、diff 数）在任何会话中都为 0。
+- **Cause**: OpenCode 的 `session` 表从不填充 `summary_additions / summary_deletions /
+  summary_files / summary_diffs`，也没有可用的逐消息代码变更数据。
+- **Fix**: 先移除恒为 0 的列（ceba409），随后整体移除 Code 页签（a30f6b3）。
 
-### 3. Delta percentage was ~100× too small (and hidden)
+### 3. 会话列表按 token 排序，而非按最近活动
+
+- **Symptom**: 「最近会话」的顺序按 token 量排序，活跃会话沉底，列表不稳定。
+- **Cause**: `recent_sessions` 按 `tokens` 排序，且每会话只累积了部分消息的元数据。
+- **Fix**: 改为按 `last_active_ms`（会话内最新消息时间）降序，并跨所有消息累加
+  每会话的 token / cost（7cbfb05、f8dd242）。
+
+### 4. Agents 页签甜甜圈颜色与 token 条不一致
+
+- **Symptom**: 同一 Agent 在 token 排行和费用甜甜圈里颜色不同。
+- **Cause**: `CostDonut` 默认按花费重排并重新配色，覆盖了调用方传入的颜色。
+- **Fix**: 增加 `preserveColors` 让 Agents 页签保留与 token 条一致的配色，并改用
+  按排名（深 → 浅）的蓝色系调色板（7936f67、55224e3）。
+
+### 5. `cargo run --example dump` 在更名后编译失败
+
+- **Symptom**: 文档中的快照生成命令直接编译报错——示例引用
+  `tokenscope_lib::dashboard_json()`，而 crate 的 lib 名已改为 `ocscale_lib`。
+- **Cause**: tokenscope → ocscale 更名时漏改了 `examples/dump.rs`。
+- **Fix**: 改为 `ocscale_lib`；顺带移除残留的 `tokenscope-panel.html` 设计稿、
+  清理源码里的 TokenScope 字样，并重新生成本地 `public/dev-dashboard.json`
+  （gitignored、随机器而异）。
+
+---
+
+## Early entries（更名前，仍适用）
+
+### 6. Delta percentage was ~100× too small (and hidden)
 
 - **Symptom**: The Day view showed no change percentage next to Total tokens.
 - **Cause**: `pct_delta` computed `((cur-prev)/prev*100).round()/100`, which
@@ -48,11 +62,7 @@ fix. Newest first. Useful as a reference for similar issues.
 - **Fix**: Changed `pct_delta` to `((cur-prev)/prev*10000).round()/100`, which
   returns a real percentage with 2 decimals (e.g. `20.47`).
 
----
-
-## Release & distribution (CI)
-
-### 4. Release CI failed: empty Apple signing env var
+### 7. Release CI failed: empty Apple signing env var
 
 - **Symptom**: The `v0.1.1` build failed at the bundle step with
   `security: SecKeychainItemImport: ... parameters ... not valid` /
@@ -65,7 +75,7 @@ fix. Newest first. Useful as a reference for similar issues.
 - **Fix**: Commented out the Apple signing/notarization env in `release.yml`
   until the real secrets exist. The build now does ad-hoc signing, like local.
 
-### 5. GitHub Release had no .dmg / .app — it was a draft
+### 8. GitHub Release had no .dmg / .app — it was a draft
 
 - **Symptom**: "The release has no artifacts."
 - **Cause**: `releaseDraft: true` — the build *did* succeed and attach the
@@ -76,7 +86,7 @@ fix. Newest first. Useful as a reference for similar issues.
 - **Fix**: Set `releaseDraft: false` so each tag publishes immediately and the
   asset URL is live for the Homebrew step and `brew install`.
 
-### 6. Homebrew Cask step would hash a 404 page
+### 9. Homebrew Cask step would hash a 404 page
 
 - **Symptom**: Latent — the cask `sha256` could be computed from an error page.
 - **Cause**: The cask step fetched the asset with `curl -sL` (no `-f`), so a 404
@@ -85,40 +95,36 @@ fix. Newest first. Useful as a reference for similar issues.
 - **Fix**: Use `curl -fsSL` so a missing asset fails and retries; fail loudly
   (`exit 1`) if the asset never appears.
 
-### 7. DMG name didn't match the tag
+### 10. DMG name didn't match the tag
 
-- **Symptom**: A `v0.1.1` tag would build `Tokenscope_0.1.0_universal.dmg`,
-  which the cask step (computing the name from the tag) couldn't download → 404.
+- **Symptom**: A `v0.1.1` tag would build a DMG named after the previous
+  version, which the cask step (computing the name from the tag) couldn't
+  download → 404.
 - **Cause**: Tauri names the artifact from the version in `tauri.conf.json`,
-  which was still `0.1.0` while the tag was `v0.1.1`.
+  which lagged behind the tag.
 - **Fix**: Bump the version in `package.json`, `tauri.conf.json`, and
-  `Cargo.toml` (+ `Cargo.lock`) so the built DMG name matches the tag the cask
-  step expects.
+  `Cargo.toml` (+ `Cargo.lock`) so the built artifact name matches the tag the
+  cask step expects.
 
----
+### 11. Two menu-bar icons after reinstall
 
-## App behavior & packaging
-
-### 8. Two menu-bar icons after reinstall
-
-- **Symptom**: Reinstalling/relaunching left two Tokenscope icons in the menu
-  bar.
+- **Symptom**: Reinstalling/relaunching left two OCScale icons in the menu bar.
 - **Cause**: No single-instance guard — a second launch started a second
   process with its own tray icon.
 - **Fix**: Added `tauri-plugin-single-instance` (registered first) so a second
   launch hands off to the running instance (showing the popover) and exits.
 
-### 9. Unsigned app blocked by Gatekeeper on first open
+### 12. Unsigned app blocked by Gatekeeper on first open
 
-- **Symptom**: "Apple cannot verify Tokenscope.app is free of malware."
+- **Symptom**: "Apple cannot verify OCScale.app is free of malware."
 - **Cause**: The build is unsigned/unnotarized, and Homebrew adds a quarantine
   attribute to installed apps.
-- **Fix**: Added a `postflight` to the cask that runs `xattr -cr` on the
-  installed app, so `brew install` opens cleanly. (The `.dmg` path still needs a
-  manual right-click → Open or `xattr -cr`; a full fix needs Developer ID
-  signing + notarization.)
+- **Fix**: The cask's `postflight` runs `xattr -cr` on the installed app so
+  `brew install` opens cleanly. (The `.dmg` path still needs a manual
+  right-click → Open or `xattr -cr`; a full fix needs Developer ID signing +
+  notarization.)
 
-### 10. App icon had opaque white corners
+### 13. App icon had opaque white corners
 
 - **Symptom**: The rounded app icon showed white square corners in Launchpad.
 - **Cause**: The icon PNGs had a white (opaque) background in the corners
@@ -127,11 +133,7 @@ fix. Newest first. Useful as a reference for similar issues.
   (`scripts/gen_icon.py`, 4× supersampled), then ran `pnpm tauri icon` to
   produce every size + `icon.icns` / `icon.ico` with transparent corners.
 
----
-
-## UI / charts
-
-### 11. Bar-chart tooltip overlapped the legend above it
+### 14. Bar-chart tooltip overlapped the legend above it
 
 - **Symptom**: Hovering a token bar showed its tooltip floating up over the
   Total-tokens "Input … cached" legend, even for short bars.
@@ -139,33 +141,19 @@ fix. Newest first. Useful as a reference for similar issues.
   full column height (`alignSelf: stretch`). The tooltip then anchored to the
   column's `top` — i.e. the top of the chart, right under the legend — so every
   bar's tooltip appeared at the same high spot.
-- **Fix** (`charts.tsx` + `tokenscope-panel.html`): anchor the tooltip to the
-  *visible bar top* (`r.bottom − barPx`, baseline minus bar height) instead of
-  the column top, so short bars get a low tooltip clear of the legend.
+- **Fix** (`charts.tsx`): anchor the tooltip to the *visible bar top*
+  (`r.bottom − barPx`, baseline minus bar height) instead of the column top, so
+  short bars get a low tooltip clear of the legend.
 
-### 12. Mockup tooltip drifted to the panel centre (backdrop-filter)
-
-- **Symptom**: In `tokenscope-panel.html` only, the heatmap/bar tooltips
-  appeared near the middle of the panel instead of next to the hovered cell/bar.
-- **Cause**: The design board's card uses `backdrop-filter: blur(...)`. Like
-  `transform`/`filter`, `backdrop-filter` establishes a **containing block for
-  `position: fixed`** descendants — so the fixed tooltip anchored to the card,
-  not the viewport, and its viewport coordinates landed mid-panel. The real app
-  was unaffected (its card is solid, no backdrop-filter, and it needs `fixed` to
-  escape the scrolling card).
-- **Fix** (`tokenscope-panel.html` only): position the tooltips `absolute`
-  relative to each chart's own wrapper (coords offset from the wrapper rect).
-  The mockup never scrolls, so it doesn't need `fixed`.
-
-### 13. Total-tokens bar showed slivers when usage was zero
+### 15. Total-tokens bar showed slivers when usage was zero
 
 - **Symptom**: With no usage in the period (Total = 0.00M), the input/output
   split bar still showed a small coloured sliver instead of being empty.
-- **Cause**: Each segment had `minWidth: 4`, so even a `flexGrow` of `1e-6`
+- **Cause**: Each segment had `minWidth: 4`, so even a negligible share
   rendered a 4px block — two slivers when everything was zero.
-- **Fix** (`App.tsx` + `tokenscope-panel.html`): give the bar a track background
-  and only render the coloured segments when `totalTokens > 0`; otherwise the
-  bar is just the empty track.
+- **Fix** (`App.tsx`): give the bar a track background and only render the
+  coloured segments when `totalTokens > 0`; otherwise the bar is just the empty
+  track.
 
 ### 16. Total-tokens split bar didn't fill — gray track showed through
 
@@ -176,7 +164,7 @@ fix. Newest first. Useful as a reference for similar issues.
 - **Cause**: The two segments used `flexGrow` + `flexBasis: 0` (+ `minWidth: 4`).
   In the WebKit webview that combination sizes each segment to roughly **its own
   grow factor as an absolute fraction of the bar**, not the **grow-factor ratio**
-  — so `flexGrow` 0.10 vs 1e-6 covered ~10% of the bar, not ~100%, and the track
+  — so a small `flexGrow` covered ~10% of the bar, not ~100%, and the track
   showed through. The data was correct (verified by dumping `build_dashboard`'s
   JSON and computing the expected ratio); only the rendering was wrong.
 - **Fix** (`src/App.tsx`): use explicit `width: X%` instead of `flexGrow`
@@ -184,24 +172,17 @@ fix. Newest first. Useful as a reference for similar issues.
   the bar from input+cache vs output to **cached vs rest (uncached input +
   output)**: the dark segment is the cache share (matching the "% cached" label),
   and "rest" is wider than output-alone, so a small non-cached share still reads
-  past the pill's rounded corner without distorting the ratio. Pill shape kept;
-  the `SplitLegend` below was changed from "Input / Output" to "Cached / New" to
-  match. (A temporary "清零" tray menu item — clearing the cache and
-  fast-forwarding ingest offsets — was used to reproduce the lopsided state, then
-  removed.)
+  past the pill's rounded corner without distorting the ratio. The `SplitLegend`
+  below was changed from "Input / Output" to "Cached / New" to match.
 
----
-
-## Theme
-
-### 14. "System" theme mode didn't follow the macOS appearance
+### 17. "System" theme mode didn't follow the macOS appearance
 
 - **Symptom**: On macOS, the "System" theme option didn't track the OS dark/light
   mode — neither when toggling system appearance with the popover open, nor after
   quitting and relaunching the app (it stayed on the launch-time appearance).
   Windows was unaffected.
 - **Cause**: The frontend derived the system appearance entirely from
-  `window.matchMedia("(prefers-color-scheme: dark)")` (`App.tsx`). But Tokenscope
+  `window.matchMedia("(prefers-color-scheme: dark)")` (`App.tsx`). But OCScale
   is an `Accessory` (menu-bar) app whose popover is a **non-activating `NSPanel`**
   that is `order_out`'d (hidden) most of the time. In that configuration
   WKWebView's `prefers-color-scheme` is unreliable: it doesn't reliably fire the
@@ -223,12 +204,12 @@ fix. Newest first. Useful as a reference for similar issues.
   `block` re-exports already imported in `lib.rs`. (`src-tauri/src/lib.rs`,
   `src/App.tsx`)
 
-### 15. Selected period pill flashed white→transparent on a light→dark switch
+### 18. Selected period pill flashed white→transparent on a light→dark switch
 
-- **Symptom**: After the fix above, switching the system theme from light to dark
-  while the popover was hidden, then opening it, showed a brief "white →
-  transparent" fade on the currently-selected period pill (Day/Week/Month) for a
-  moment — most visible element of an otherwise-instant flip.
+- **Symptom**: Switching the system theme from light to dark while the popover
+  was hidden, then opening it, showed a brief "white → transparent" fade on the
+  currently-selected period pill (Day/Week/Month) for a moment — most visible
+  element of an otherwise-instant flip.
 - **Cause**: The `Segmented` selected pill carries
   `transition: "color .15s, background .15s"` (`charts.tsx`), wanted for smooth
   period-switching. On a *whole-theme* flip this turns every color change into a
@@ -250,9 +231,9 @@ fix. Newest first. Useful as a reference for similar issues.
 
 ## Notes
 
-- "Month" was also changed from a rolling 30-day window to the **current
-  calendar month vs the previous calendar month** — a behavior change requested
-  during testing, not a bug.
+- "Month" was changed from a rolling 30-day window to the **current calendar
+  month vs the previous calendar month** — a behavior change requested during
+  testing, not a bug.
 - "Week" was likewise changed from a rolling last-7-days window to the **current
   calendar week (Monday–Sunday) vs the previous calendar week**, so the delta
   compares this week against last week.

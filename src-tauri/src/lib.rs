@@ -655,7 +655,7 @@ async fn get_dashboard(app: tauri::AppHandle) -> Dashboard {
 }
 
 /// Save a full-panel screenshot (a `data:image/png;base64,...` URL captured in
-/// the webview) to the user's Desktop as `Tokenscope <date> at <time>.png`.
+/// the webview) to the user's Desktop as `OCScale <date> at <time>.png`.
 /// DOM rasterization sidesteps macOS Screen Recording permission entirely.
 /// Returns the written file path on success.
 #[tauri::command]
@@ -795,7 +795,7 @@ pub fn run() {
 
                 let lh = last_hidden.clone();
                 let handle = app.handle().clone();
-                let delegate = tauri_nspanel::panel_delegate!(TokenscopePanelDelegate {
+                let delegate = tauri_nspanel::panel_delegate!(OCScalePanelDelegate {
                     window_did_resign_key
                 });
                 delegate.set_listener(Box::new(move |name: String| {
