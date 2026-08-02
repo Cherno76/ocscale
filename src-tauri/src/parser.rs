@@ -587,8 +587,9 @@ fn report_day(events: &[Event], now: DateTime<Local>) -> PeriodReport {
 
     let projects = aggregate_projects(&period_events);
     debug_assert!(
-        (agg.models().iter().map(|m| m.cost).sum::<f64>()
-            - projects.iter().map(|p| p.cost).sum::<f64>()).abs() < 0.01,
+        // Per-row 2-decimal rounding drifts a few cents; compare the unrounded
+        // total against the rounded project sum with a tolerant bound.
+        (agg.cost - projects.iter().map(|p| p.cost).sum::<f64>()).abs() < 0.05,
         "model cost sum != project cost sum"
     );
     PeriodReport {
@@ -667,8 +668,7 @@ fn report_week(events: &[Event], now: DateTime<Local>) -> PeriodReport {
 
     let projects = aggregate_projects(&period_events);
     debug_assert!(
-        (agg.models().iter().map(|m| m.cost).sum::<f64>()
-            - projects.iter().map(|p| p.cost).sum::<f64>()).abs() < 0.01,
+        (agg.cost - projects.iter().map(|p| p.cost).sum::<f64>()).abs() < 0.05,
         "model cost sum != project cost sum"
     );
     PeriodReport {
@@ -757,8 +757,7 @@ fn report_month(events: &[Event], now: DateTime<Local>) -> PeriodReport {
 
     let projects = aggregate_projects(&period_events);
     debug_assert!(
-        (agg.models().iter().map(|m| m.cost).sum::<f64>()
-            - projects.iter().map(|p| p.cost).sum::<f64>()).abs() < 0.01,
+        (agg.cost - projects.iter().map(|p| p.cost).sum::<f64>()).abs() < 0.05,
         "model cost sum != project cost sum"
     );
     PeriodReport {

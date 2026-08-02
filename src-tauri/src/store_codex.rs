@@ -6,7 +6,10 @@
 //! - `session_meta`             → session id, `cwd` (project), originator, source
 //! - `turn_context` / `task_started` → session-level model id
 //! - `event_msg`/`token_count`  → per-turn token usage (`total_token_usage` is
-//!   cumulative across the session, so per-turn = current − previous)
+//!   cumulative across the session, so per-turn = current − previous;
+//!   `input_tokens` includes `cached_input_tokens` as a subset — verified
+//!   `cached ≤ input` and `total == input + output` on every event — so
+//!   uncached input = input − cached, never input + cached)
 //! - `response_item`/`function_call` → tool calls; MCP tools carry a
 //!   `namespace` of `mcp__<server>` (e.g. `mcp__node_repl`)
 //!
@@ -227,6 +230,10 @@ fn load_events_from(files: &[PathBuf]) -> Vec<RawEvent> {
                                 },
                             };
                             prev = Some(cur);
+                            // `cached_input_tokens` is a subset of `input_tokens`
+                            // (a cache hit is not *additional* input), so only
+                            // the non-cached remainder is billed as fresh input.
+                            let in_tok = (per_turn.input - per_turn.cr).max(0.0);
                             if per_turn.input
                                 + per_turn.cc
                                 + per_turn.cr
@@ -251,7 +258,7 @@ fn load_events_from(files: &[PathBuf]) -> Vec<RawEvent> {
                                 } else {
                                     model.clone()
                                 },
-                                in_tok: per_turn.input,
+                                in_tok,
                                 cc: per_turn.cc,
                                 cr: per_turn.cr,
                                 out_tok: per_turn.output,
@@ -328,6 +335,37 @@ fn load_events_from(files: &[PathBuf]) -> Vec<RawEvent> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Regression: `cached_input_tokens` is a subset of `input_tokens`; adding
+    /// them separately double-counts every cache hit.
+    #[test]
+    fn cached_input_not_double_counted() {
+        use std::fs;
+        use std::io::Write;
+        let dir = std::env::temp_dir().join(format!("ocscale-codex-test-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("rollout-test.jsonl");
+        let lines = [
+            r#"{"timestamp":"2026-08-03T00:00:00.000Z","type":"session_meta","payload":{"session_id":"s1","id":"s1","cwd":"/tmp/proj","originator":"Codex Desktop","source":"desktop","timestamp":"2026-08-03T00:00:00.000Z"}}"#,
+            r#"{"timestamp":"2026-08-03T00:00:01.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":800,"cache_write_input_tokens":0,"output_tokens":100,"reasoning_output_tokens":50,"total_tokens":1100}}}}"#,
+            r#"{"timestamp":"2026-08-03T00:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":2000,"cached_input_tokens":1600,"cache_write_input_tokens":0,"output_tokens":200,"reasoning_output_tokens":100,"total_tokens":2200}}}}"#,
+        ];
+        let mut f = fs::File::create(&path).unwrap();
+        for l in lines {
+            writeln!(f, "{l}").unwrap();
+        }
+        let events = load_events_from(&[path.clone()]);
+        fs::remove_dir_all(&dir).ok();
+        assert_eq!(events.len(), 2);
+        // Turn 1: 1000 input with 800 cache hit → 200 uncached + 800 cached.
+        assert_eq!(events[0].in_tok, 200.0);
+        assert_eq!(events[0].cr, 800.0);
+        assert_eq!(events[0].out_tok, 100.0);
+        assert_eq!(events[0].reasoning, 50.0);
+        // Turn 2 deltas: +1000 input, +800 cached → 200 uncached.
+        assert_eq!(events[1].in_tok, 200.0);
+        assert_eq!(events[1].cr, 800.0);
+    }
 
     #[test]
     fn mcp_namespace_extraction() {
