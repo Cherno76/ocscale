@@ -14,7 +14,7 @@ export interface Metrics {
   reasoningTokens: number;
 }
 export interface PeriodReport {
-  metrics: Metrics; series: SeriesPoint[]; models: ModelStat[];
+  metrics: Metrics; series: SeriesPoint[]; models: ModelStat[]; agents: AgentStat[];
   mcp: NamedCount[]; skills: NamedCount[]; reqTrend: number[]; costTrend: number[];
   projects: ProjectStat[];
 }

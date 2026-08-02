@@ -106,6 +106,7 @@ pub struct PeriodReport {
     pub metrics: Metrics,
     pub series: Vec<SeriesPoint>,
     pub models: Vec<ModelStat>,
+    pub agents: Vec<AgentStat>,
     pub mcp: Vec<NamedCount>,
     pub skills: Vec<NamedCount>,
     pub projects: Vec<ProjectStat>,

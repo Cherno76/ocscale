@@ -10,11 +10,11 @@
 //! - `response_item`/`function_call` → tool calls; MCP tools carry a
 //!   `namespace` of `mcp__<server>` (e.g. `mcp__node_repl`)
 //!
-//! Not wired into the app yet: this module exists so the feasibility example
-//! (`cargo run --example dump_codex`) can run Codex data through the same
-//! aggregation pipeline (`parser::build_dashboard_from`). Fields Codex doesn't
-//! record (per-message cost, skills, cache-write for older transcripts) fall
-//! back to zero / the pricing module, exactly like unknown OpenCode models.
+//! Wired into the app: `build_dashboard` merges `cached_events()` with OpenCode
+//! events for the combined view; `cargo run --example dump_codex` dumps the
+//! Codex-only dashboard for standalone inspection. Fields Codex doesn't record
+//! (per-message cost, skills, cache-write for older transcripts) fall back to
+//! zero / the pricing module, exactly like unknown OpenCode models.
 
 use crate::store::RawEvent;
 use chrono::DateTime;
@@ -22,6 +22,8 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn codex_home() -> Option<PathBuf> {
     dirs::home_dir().map(|h| h.join(".codex"))
@@ -107,14 +109,47 @@ fn mcp_server_from_namespace(namespace: &str) -> Option<String> {
     }
 }
 
+/// Memoized Codex events, keyed by transcript file mtimes, so the 30s dashboard
+/// refresh only reparses when a transcript actually changed.
+static CODEX_CACHE: OnceLock<Mutex<Option<(Vec<(PathBuf, SystemTime)>, Arc<Vec<RawEvent>>)>>> =
+    OnceLock::new();
+
+/// Load Codex events, reusing the cache when no transcript has changed.
+pub fn cached_events() -> Arc<Vec<RawEvent>> {
+    let lock = CODEX_CACHE.get_or_init(|| Mutex::new(None));
+    let mut g = lock.lock().unwrap_or_else(|e| e.into_inner());
+    let files = find_transcripts();
+    let stamp: Vec<(PathBuf, SystemTime)> = files
+        .iter()
+        .map(|p| {
+            let m = fs::metadata(p)
+                .and_then(|m| m.modified())
+                .unwrap_or(UNIX_EPOCH);
+            (p.clone(), m)
+        })
+        .collect();
+    if let Some((prev, events)) = g.as_ref() {
+        if *prev == stamp {
+            return events.clone();
+        }
+    }
+    let events = Arc::new(load_events_from(&files));
+    *g = Some((stamp, events.clone()));
+    events
+}
+
 /// Parse every Codex transcript into a time-sorted `RawEvent` list.
 pub fn load_events() -> Vec<RawEvent> {
+    load_events_from(&find_transcripts())
+}
+
+fn load_events_from(files: &[PathBuf]) -> Vec<RawEvent> {
     let titles = load_titles();
     let mut events: Vec<RawEvent> = Vec::new();
     let mut sess_first: HashMap<String, i64> = HashMap::new();
     let mut sess_last: HashMap<String, i64> = HashMap::new();
 
-    for path in find_transcripts() {
+    for path in files {
         let Ok(text) = fs::read_to_string(&path) else { continue };
         let mut session = String::new();
         let mut cwd = String::new();

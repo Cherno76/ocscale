@@ -241,7 +241,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
   const [period, setPeriod] = useState<"Day" | "Week" | "Month">("Week");
   const [refreshing, setRefreshing] = useState(false);
   const [autostartOn, setAutostartOn] = useState(false);
-  const [costTab, setCostTab] = useState<"model" | "project">("model");
+  const [costTab, setCostTab] = useState<"model" | "project" | "agent">("model");
   useEffect(() => {
     // Read initial autostart state from the Rust backend.
     if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
@@ -312,6 +312,24 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
   );
   const maxP = Math.max(...projectTokens.map((p) => p.tokens), 1e-9);
   const projectShares = sharePcts(projectTokens.map((p) => p.tokens));
+  // Period-scoped agent stats (the Agents tab shows the all-time view).
+  const agentStats = P.agents || [];
+  const maxA = Math.max(...agentStats.map((a) => a.tokens), 1e-9);
+  const agentShares = sharePcts(agentStats.map((a) => a.tokens));
+  // Blue palette by rank (darkest → lightest), matching the Agents tab.
+  const AGENT_BLUES = ["#1e3a8a", "#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe"];
+  const agentColor = (i: number) => AGENT_BLUES[i % AGENT_BLUES.length];
+  // Keep donut colors aligned with the row colors by mapping over the full
+  // (already sorted) list and keeping only entries with cost > 0.
+  const agentCostItems: ModelStat[] = [];
+  agentStats.forEach((a, i) => {
+    if (a.cost > 0) {
+      agentCostItems.push({
+        name: a.agent, vendor: "", tokens: a.tokens, cost: a.cost,
+        color: agentColor(i), priced: true, costSource: "pricing",
+      });
+    }
+  });
   const trendSub = { Day: tr.today24h, Week: tr.thisWeek, Month: tr.thisMonth }[period];
 
   // screenshot capture: rasterize the full panel card to a PNG and hand it to
@@ -458,32 +476,42 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
         <SectionRule t={t} m="14px 0 10px" />
         {/* models / projects — tabbed */}
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
-          <Label t={t}>{costTab === "model" ? tr.tokensByModel : tr.byProject}</Label>
-          <Segmented value={costTab} items={["Model", "Project"]} itemValues={["model", "project"]} theme={t} onSelect={(v) => setCostTab(v as "model" | "project")} />
+          <Label t={t}>{costTab === "model" ? tr.tokensByModel : costTab === "project" ? tr.byProject : tr.tokensByAgent}</Label>
+          <Segmented value={costTab} items={[tr.model, tr.project, tr.byAgent]} itemValues={["model", "project", "agent"]} theme={t} onSelect={(v) => setCostTab(v as "model" | "project" | "agent")} />
         </div>
         {costTab === "model" ? (
           <>
             {tokenModels.length === 0 && <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
             {tokenModels.map((m, i) => <ModelRow key={i} m={m} max={maxM} theme={t} share={tokenShares[i]} />)}
           </>
-        ) : (
+        ) : costTab === "project" ? (
           <>
             {projectTokens.length === 0 && <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
             {projectTokens.map((p, i) => <ProjectRow key={i} p={p} max={maxP} theme={t} share={projectShares[i]} />)}
           </>
+        ) : (
+          <>
+            {agentStats.length === 0 && <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
+            {agentStats.map((a, i) => <AgentRow key={i} a={a} max={maxA} theme={t} share={agentShares[i]} color={agentColor(i)} />)}
+          </>
         )}
         <SectionRule t={t} m="10px 0 10px" />
         {/* cost donut — same tab */}
-        <div style={{ marginBottom: 8 }}><Label t={t}>{costTab === "model" ? tr.costByModel : tr.costByProject}</Label></div>
+        <div style={{ marginBottom: 8 }}><Label t={t}>{costTab === "model" ? tr.costByModel : costTab === "project" ? tr.costByProject : tr.costByAgent}</Label></div>
         {costTab === "model" ? (
           costModels.length > 0
             ? <CostDonut models={costModels} theme={t} size={100} thickness={15}
                 currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} />
             : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
-        ) : (
+        ) : costTab === "project" ? (
           projectCostItems.length > 0
             ? <CostDonut models={projectCostItems} theme={t} size={100} thickness={15}
                 currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} />
+            : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
+        ) : (
+          agentCostItems.length > 0
+            ? <CostDonut models={agentCostItems} theme={t} size={100} thickness={15}
+                currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} preserveColors />
             : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
         )}
         {costTab === "model" && unpricedModels.length > 0 && (

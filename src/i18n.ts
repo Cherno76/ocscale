@@ -24,6 +24,8 @@ const EN = {
   noUsageInThisPeriod: "No usage in this period",
   costByModel: "Cost by model",
   costDash: "—",
+  model: "Model",
+  project: "Project",
   modelsWithoutPricing: (n: number) =>
     `${n} model${n > 1 ? "s" : ""} without pricing data (cost not counted):`,
   // Stats
@@ -111,6 +113,8 @@ const ZH: Dict = {
   noUsageInThisPeriod: "该时段无使用记录",
   costByModel: "按模型统计费用",
   costDash: "—",
+  model: "模型",
+  project: "项目",
   modelsWithoutPricing: (n: number) =>
     `${n} 个模型缺少定价数据（费用未计入）：`,
   requests: "请求数",

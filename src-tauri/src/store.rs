@@ -4,7 +4,7 @@
 // own timestamp and token counts. This gives accurate hourly distribution in
 // the daily chart, unlike per-session aggregates which lump all tokens into
 // one time bucket.
-use rusqlite::Connection;
+use rusqlite::{Connection, OpenFlags};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -73,6 +73,34 @@ fn opencode_db_path() -> Option<PathBuf> {
         }
     }
     None
+}
+
+/// Open the OpenCode DB strictly read-only. We never write to OpenCode's data,
+/// and a read-write open would need to create/update the WAL/SHM sidecar files
+/// in OpenCode's directory (blocked under sandboxes / read-only mounts, which
+/// previously made `query_events` fail and silently return an empty dashboard).
+/// If a hot WAL without a readable `-shm` blocks even a read-only open, fall
+/// back to `immutable=1` (ignores journal files; safe for our read-only queries
+/// on a checkpointed DB).
+fn open_db_readonly(path: &PathBuf) -> rusqlite::Result<Connection> {
+    if let Ok(c) = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY) {
+        // WAL-mode read-only access fails *lazily* on the first real read when
+        // the `-shm` sidecar is missing/unreadable (SQLITE_CANTOPEN). Reading
+        // sqlite_master forces an actual page read so we fall back before
+        // running the real queries.
+        if c.query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get::<_, i64>(0))
+            .is_ok()
+        {
+            return Ok(c);
+        }
+    }
+    // Last resort for restricted environments (sandboxes, read-only mounts):
+    // immutable ignores journal/shm entirely. May lag uncheckpointed WAL
+    // writes from an actively-running OpenCode CLI; acceptable for the 30s poll.
+    Connection::open_with_flags(
+        format!("file:{}?immutable=1", path.display()),
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI,
+    )
 }
 
 /// Parse an assistant message JSON `data` column into a RawEvent.
@@ -163,7 +191,7 @@ fn query_events() -> Result<Vec<RawEvent>, rusqlite::Error> {
             "OpenCode database not found",
         ))
     })?;
-    let conn = Connection::open(&path)?;
+    let conn = open_db_readonly(&path)?;
 
     // Read every assistant message that has token data, ordered by time.
     // JOIN with session and project to get project info + session-level metadata.
@@ -241,7 +269,7 @@ fn query_tool_calls(user_cfg: &crate::config::UserConfig) -> HashMap<String, (Ve
         Some(p) => p,
         None => return HashMap::new(),
     };
-    let conn = match Connection::open(&path) {
+    let conn = match open_db_readonly(&path) {
         Ok(c) => c,
         Err(_) => return HashMap::new(),
     };

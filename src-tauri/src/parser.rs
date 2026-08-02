@@ -84,10 +84,9 @@ fn vendor_of(model: &str) -> &'static str {
 pub fn build_dashboard() -> Dashboard {
     let _guard = BUILD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
-    // 1. Ingest incrementally (full scan only on first run; afterwards just the
-    //    appended lines), prune events older than the heatmap window, and persist
-    //    only when something actually changed — so an idle tick doesn't rewrite
-    //    the entire events.json every 30s.
+    // 1. OpenCode: incremental ingest, prune to the heatmap window, persist only
+    //    when something actually changed — so an idle tick doesn't rewrite the
+    //    entire cache every 30s.
     let mut store = Store::load();
     let mut dirty = store.ingest();
     // Reports/heatmap span ~26 weeks (+ prev month); 210 days leaves margin.
@@ -99,7 +98,13 @@ pub fn build_dashboard() -> Dashboard {
         store.save();
     }
 
-    build_dashboard_from(&store.events)
+    // 2. Merge Codex transcripts (memoized by file mtime) for the combined view.
+    let mut events = store.events;
+    events.extend(crate::store_codex::cached_events().iter().cloned());
+    events.retain(|e| e.ts_ms >= cutoff);
+    events.sort_by_key(|e| e.ts_ms);
+
+    build_dashboard_from(&events)
 }
 
 /// Shared aggregation core: turns any `RawEvent` stream (OpenCode SQLite, or the
@@ -477,37 +482,52 @@ fn aggregate_projects(events: &[&Event]) -> Vec<ProjectStat> {
     let mut proj_cost: HashMap<String, f64> = HashMap::new();
     let mut proj_sessions: HashMap<String, HashSet<String>> = HashMap::new();
     let mut proj_name: HashMap<String, String> = HashMap::new();
+    let mut proj_pid: HashMap<String, String> = HashMap::new();
 
     for e in events {
-        let pid = if e.project_id.is_empty() {
-            "global".to_string()
+        // Merged display (OpenCode + Codex) groups by project *name*, so the
+        // same repo appears as one row regardless of which source's id it
+        // carries (OpenCode project ids vs Codex cwd paths).
+        let key = if e.project_name.is_empty() {
+            if e.project_id.is_empty() {
+                "global".to_string()
+            } else {
+                e.project_id.clone()
+            }
         } else {
-            e.project_id.clone()
+            e.project_name.clone()
         };
         let pname = if e.project_name.is_empty() {
             "Global".to_string()
         } else {
             e.project_name.clone()
         };
-        *proj_tokens.entry(pid.clone()).or_default() += (e.input + e.cache + e.output + e.reasoning) / 1e6;
-        *proj_cost.entry(pid.clone()).or_default() += e.cost;
+        proj_pid.entry(key.clone()).or_insert_with(|| {
+            if e.project_id.is_empty() {
+                "global".to_string()
+            } else {
+                e.project_id.clone()
+            }
+        });
+        *proj_tokens.entry(key.clone()).or_default() += (e.input + e.cache + e.output + e.reasoning) / 1e6;
+        *proj_cost.entry(key.clone()).or_default() += e.cost;
         proj_sessions
-            .entry(pid.clone())
+            .entry(key.clone())
             .or_default()
             .insert(e.session.clone());
-        proj_name.entry(pid.clone()).or_insert(pname);
+        proj_name.entry(key.clone()).or_insert(pname);
     }
 
     let mut projects: Vec<ProjectStat> = proj_tokens
         .iter()
-        .map(|(pid, tokens)| ProjectStat {
-            project_id: pid.clone(),
-            project_name: proj_name.get(pid).cloned().unwrap_or_default(),
+        .map(|(key, tokens)| ProjectStat {
+            project_id: proj_pid.get(key).cloned().unwrap_or_else(|| key.clone()),
+            project_name: proj_name.get(key).cloned().unwrap_or_default(),
             worktree: String::new(),
             tokens: (tokens * 100.0).round() / 100.0,
-            cost: (proj_cost.get(pid).copied().unwrap_or(0.0) * 100.0).round() / 100.0,
+            cost: (proj_cost.get(key).copied().unwrap_or(0.0) * 100.0).round() / 100.0,
             sessions: proj_sessions
-                .get(pid)
+                .get(key)
                 .map(|s| s.len() as u64)
                 .unwrap_or(0),
         })
@@ -581,6 +601,7 @@ fn report_day(events: &[Event], now: DateTime<Local>) -> PeriodReport {
         ),
         series,
         models: agg.models(),
+        agents: agg.agents(),
 
         mcp: Agg::named(&agg.mcp_counts),
         skills: Agg::named(&agg.skill_counts),
@@ -660,6 +681,7 @@ fn report_week(events: &[Event], now: DateTime<Local>) -> PeriodReport {
         ),
         series,
         models: agg.models(),
+        agents: agg.agents(),
 
         mcp: Agg::named(&agg.mcp_counts),
         skills: Agg::named(&agg.skill_counts),
@@ -749,6 +771,7 @@ fn report_month(events: &[Event], now: DateTime<Local>) -> PeriodReport {
         ),
         series,
         models: agg.models(),
+        agents: agg.agents(),
 
         mcp: Agg::named(&agg.mcp_counts),
         skills: Agg::named(&agg.skill_counts),

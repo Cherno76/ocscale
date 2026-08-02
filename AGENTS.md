@@ -36,7 +36,9 @@ The frontend reads version dynamically via the `get_version` Tauri command (read
 ```
 OpenCode SQLite DB (~/.local/share/opencode/opencode.db)
     ↓ (store.rs — query_events → RawEvent[], compare-by-value for change detection)
-parser.rs::build_dashboard()          ← serialised by BUILD_LOCK (Mutex)
+Codex transcripts (~/.codex/sessions/** + archived_sessions/)
+    ↓ (store_codex.rs — mtime-memoized parse → RawEvent)
+parser.rs::build_dashboard()          ← serialised by BUILD_LOCK (Mutex), merges both sources
     ├── config.rs                     → MCP/Skill whitelists (opencode.json `mcp` keys + skills dir)
     └── pricing.rs::Pricing::shared() → Arc memoized, loaded off-main-thread, refreshed every 24h
     ↓
@@ -49,7 +51,7 @@ App.tsx + charts.tsx (React, custom SVG charts — no chart library)
 
 **Frontend files** (5): `src/App.tsx`, `charts.tsx`, `data.ts`, `i18n.ts`, `main.tsx`.
 
-**Rust files** (8): `lib.rs` (app setup, tray, commands, 100M celebration), `store.rs` (SQLite→RawEvent), `parser.rs` (aggregation), `pricing.rs` (price loading/cost), `model.rs` (serializable structs), `config.rs` (user MCP/Skill whitelist), `store_codex.rs` (Codex feasibility prototype — parses `~/.codex` transcripts, NOT wired into the app), `main.rs` (entry).
+**Rust files** (8): `lib.rs` (app setup, tray, commands, 100M celebration), `store.rs` (SQLite→RawEvent), `parser.rs` (aggregation), `pricing.rs` (price loading/cost), `model.rs` (serializable structs), `config.rs` (user MCP/Skill whitelist), `store_codex.rs` (Codex data source — parses `~/.codex` transcripts, merged into `build_dashboard`), `main.rs` (entry).
 
 ## Data sources & pricing
 
@@ -58,7 +60,7 @@ App.tsx + charts.tsx (React, custom SVG charts — no chart library)
 - **MCP/Skill tracking**: implemented for OpenCode. `config.rs` reads user MCP server names from `~/.config/opencode/opencode.json` (`mcp` object keys) and skill names from the `~/.config/opencode/skills/` directory. `store.rs` classifies tool calls from the `part` table: built-in tools are filtered, `{server}_{tool}` names whose prefix matches a configured MCP server count as MCP, and the `skill` tool's `state.input.name` counts as a Skill call.
 - Price matching: exact model name → normalized (strip vendor prefix after `/`, `.`↔`p`). Unmatched models still count tokens but show "no price" label.
 - OpenCode's per-message `cost` field is used as a fallback when the pricing module doesn't recognise a model.
-- **Codex feasibility prototype** (not wired into the app): `store_codex.rs` parses `~/.codex/sessions/**` + `archived_sessions/` transcripts (token_count → per-turn tokens, session_meta → project/agent, `mcp__` tool calls → MCP) into `RawEvent`, then runs the same pipeline via `parser::build_dashboard_from`. Try it: `cd src-tauri && cargo run --example dump_codex > /tmp/codex-dashboard.json`.
+- **Codex data source (merged)**: `build_dashboard` combines OpenCode + Codex `RawEvent`s; `store_codex.rs` parses `~/.codex/sessions/**` + `archived_sessions/` transcripts (mtime-memoized). MCP tools come from the `function_call` `namespace` field (`mcp__<server>`, e.g. `mcp__node_repl`); there is no per-message model/cost (session-level model, pricing-module fallback) and no Skill equivalent. Standalone dump: `cd src-tauri && cargo run --example dump_codex > /tmp/codex-dashboard.json`. Merged display groups projects by name; the Overview tab can toggle Model / Project / Agent.
 
 ## Key gotchas
 
