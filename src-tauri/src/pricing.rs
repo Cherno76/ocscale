@@ -264,6 +264,20 @@ impl Pricing {
         for (id, price) in b {
             self.insert(id, price.clone());
         }
+        // deepseek-v4-flash — official DeepSeek rates (CNY per 1M tokens):
+        //   input (cache miss) ¥1, cache hit ¥0.02, output ¥2.
+        // Cache-write tokens bill at the cache-miss input rate. The live
+        // LiteLLM table has the model but prices cache writes at 0, so these
+        // rates override it. Stored as USD at the zh UI's exchange rate (7.2)
+        // so the panel's `cost × 7.2` shows the exact CNY figure.
+        let flash = mk(
+            1.0 / 7.2 / 1e6,
+            2.0 / 7.2 / 1e6,
+            1.0 / 7.2 / 1e6,
+            0.02 / 7.2 / 1e6,
+        );
+        self.exact.insert("deepseek-v4-flash".to_string(), flash.clone());
+        self.norm.insert(normalize_key("deepseek-v4-flash"), flash);
     }
 
     fn lookup(&self, model: &str) -> Option<&ModelPrice> {
@@ -297,5 +311,22 @@ impl Pricing {
     #[allow(dead_code)]
     pub fn known(&self, model: &str) -> bool {
         self.lookup(model).is_some()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deepseek_v4_flash_uses_official_rates() {
+        let p = Pricing::builtin_only();
+        assert!(p.lookup("deepseek-v4-flash").is_some());
+        // 1M miss input + 1M cache write + 1M cache hit + 1M output (USD):
+        let c = p
+            .cost("deepseek-v4-flash", 1e6, 1e6, 1e6, 1e6, 0.0)
+            .unwrap();
+        let expected = (1.0 + 1.0 + 2.0 + 0.02) / 7.2;
+        assert!((c - expected).abs() < 1e-9, "cost={c} expected={expected}");
     }
 }

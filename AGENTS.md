@@ -57,6 +57,7 @@ App.tsx + charts.tsx (React, custom SVG charts — no chart library)
 
 - **Primary**: OpenCode SQLite database at `$XDG_DATA_HOME/opencode/opencode.db` or `~/.local/share/opencode/opencode.db`.
 - **Pricing**: models.dev API → LiteLLM → built-in snapshot (`src-tauri/snapshots/litellm.json`). Cached at `~/Library/Caches/ocscale/` (macOS) / platform cache dir, refreshed every 24h.
+- **`deepseek-v4-flash` pricing override** (built into `pricing.rs`): official DeepSeek rates — ¥1/M cache-miss input (cache-write tokens bill at this rate), ¥0.02/M cache hit, ¥2/M output — stored as USD at the zh UI's 7.2 rate so `cost × 7.2` shows exact CNY. Overrides the live LiteLLM entry, which prices cache writes at 0.
 - **MCP/Skill tracking**: implemented for OpenCode. `config.rs` reads user MCP server names from `~/.config/opencode/opencode.json` (`mcp` object keys) and skill names from the `~/.config/opencode/skills/` directory. `store.rs` classifies tool calls from the `part` table: built-in tools are filtered, `{server}_{tool}` names whose prefix matches a configured MCP server count as MCP, and the `skill` tool's `state.input.name` counts as a Skill call.
 - Price matching: exact model name → normalized (strip vendor prefix after `/`, `.`↔`p`). Unmatched models still count tokens but show "no price" label.
 - OpenCode's per-message `cost` field is used as a fallback when the pricing module doesn't recognise a model.
