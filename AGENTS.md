@@ -37,7 +37,7 @@ The frontend reads version dynamically via the `get_version` Tauri command (read
 OpenCode SQLite DB (~/.local/share/opencode/opencode.db)
     ↓ (store.rs — query_events → RawEvent[], compare-by-value for change detection)
 parser.rs::build_dashboard()          ← serialised by BUILD_LOCK (Mutex)
-    ├── config.rs                     → MCP/Skill whitelists (CURRENTLY EMPTY — not yet wired)
+    ├── config.rs                     → MCP/Skill whitelists (opencode.json `mcp` keys + skills dir)
     └── pricing.rs::Pricing::shared() → Arc memoized, loaded off-main-thread, refreshed every 24h
     ↓
 model.rs (Dashboard → serde JSON)
@@ -49,7 +49,7 @@ App.tsx + charts.tsx (React, custom SVG charts — no chart library)
 
 **Frontend files** (5): `src/App.tsx`, `charts.tsx`, `data.ts`, `i18n.ts`, `main.tsx`.
 
-**Rust files** (7): `lib.rs` (app setup, tray, commands, 100M celebration), `store.rs` (SQLite→RawEvent), `parser.rs` (aggregation), `pricing.rs` (price loading/cost), `model.rs` (serializable structs), `config.rs` (user MCP/Skill — placeholder), `main.rs` (entry).
+**Rust files** (8): `lib.rs` (app setup, tray, commands, 100M celebration), `store.rs` (SQLite→RawEvent), `parser.rs` (aggregation), `pricing.rs` (price loading/cost), `model.rs` (serializable structs), `config.rs` (user MCP/Skill whitelist), `store_codex.rs` (Codex feasibility prototype — parses `~/.codex` transcripts, NOT wired into the app), `main.rs` (entry).
 
 ## Data sources & pricing
 
@@ -58,6 +58,7 @@ App.tsx + charts.tsx (React, custom SVG charts — no chart library)
 - **MCP/Skill tracking**: implemented for OpenCode. `config.rs` reads user MCP server names from `~/.config/opencode/opencode.json` (`mcp` object keys) and skill names from the `~/.config/opencode/skills/` directory. `store.rs` classifies tool calls from the `part` table: built-in tools are filtered, `{server}_{tool}` names whose prefix matches a configured MCP server count as MCP, and the `skill` tool's `state.input.name` counts as a Skill call.
 - Price matching: exact model name → normalized (strip vendor prefix after `/`, `.`↔`p`). Unmatched models still count tokens but show "no price" label.
 - OpenCode's per-message `cost` field is used as a fallback when the pricing module doesn't recognise a model.
+- **Codex feasibility prototype** (not wired into the app): `store_codex.rs` parses `~/.codex/sessions/**` + `archived_sessions/` transcripts (token_count → per-turn tokens, session_meta → project/agent, `mcp__` tool calls → MCP) into `RawEvent`, then runs the same pipeline via `parser::build_dashboard_from`. Try it: `cd src-tauri && cargo run --example dump_codex > /tmp/codex-dashboard.json`.
 
 ## Key gotchas
 
@@ -99,4 +100,3 @@ Register in `lib.rs` `invoke_handler`, then in `src-tauri/capabilities/default.j
 - `README.md` — user-facing install and feature overview
 - `PRD.md` — product requirements (Chinese); for feature scope decisions
 - `docs/BUGFIXES.md` — known bugs found during development, with root cause and fix
-- `docs/REVIEW.md` — code review report (June 2026), includes known issues and risk areas

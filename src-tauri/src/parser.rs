@@ -99,13 +99,19 @@ pub fn build_dashboard() -> Dashboard {
         store.save();
     }
 
+    build_dashboard_from(&store.events)
+}
+
+/// Shared aggregation core: turns any `RawEvent` stream (OpenCode SQLite, or the
+/// Codex feasibility prototype in `store_codex`) into a Dashboard. Holds no lock
+/// and performs no store IO — callers own serialization and data loading.
+pub fn build_dashboard_from(events: &[RawEvent]) -> Dashboard {
     // 2. Aggregate: apply current config + prices, slice by current time.
     let cfg = UserConfig::load();
     // Memoized price table (cheap clone); loaded/refreshed off-thread elsewhere
     // so neither parsing nor the network runs while we hold BUILD_LOCK.
     let pricing = Pricing::shared();
-    let events: Vec<Event> = store
-        .events
+    let events: Vec<Event> = events
         .iter()
         .map(|r| compute_event(r, &cfg, &pricing))
         .collect();
@@ -181,12 +187,17 @@ fn compute_event(r: &RawEvent, cfg: &UserConfig, pricing: &Pricing) -> Event {
     } else {
         (None, "none")
     };
-    let mcp = r
-        .mcp
-        .iter()
-        .filter(|s| cfg.is_user_mcp(s))
-        .cloned()
-        .collect();
+    let mcp = if r.source == "codex" {
+        // Codex feasibility prototype: `mcp__`-prefixed tool names are already
+        // user-configured servers by definition, so skip the OpenCode whitelist.
+        r.mcp.clone()
+    } else {
+        r.mcp
+            .iter()
+            .filter(|s| cfg.is_user_mcp(s))
+            .cloned()
+            .collect()
+    };
     let skills = r
         .skills
         .iter()

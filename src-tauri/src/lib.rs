@@ -6,6 +6,7 @@ mod model;
 mod parser;
 mod pricing;
 mod store;
+pub mod store_codex;
 
 use model::Dashboard;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
@@ -680,6 +681,14 @@ fn save_screenshot(data_url: String) -> Result<String, String> {
 /// For CLI/example validation against real logs.
 pub fn dashboard_json() -> String {
     serde_json::to_string_pretty(&parser::build_dashboard()).unwrap_or_default()
+}
+
+/// Codex feasibility prototype: build a Dashboard from Codex session transcripts
+/// (`~/.codex/sessions/**` + `archived_sessions/`). Not wired into the app —
+/// run via `cargo run --example dump_codex`.
+pub fn codex_dashboard_json() -> String {
+    let events = store_codex::load_events();
+    serde_json::to_string_pretty(&parser::build_dashboard_from(&events)).unwrap_or_default()
 }
 
 // ── Autostart commands (called from the frontend panel) ─────────────
