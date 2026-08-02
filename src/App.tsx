@@ -204,6 +204,24 @@ function LangToggle({ lang, onClick, theme }: { lang: Lang; onClick: () => void;
   );
 }
 
+/// Small pill switch: ON = menu bar shows the DeepSeek balance, OFF = tokens.
+function TrayToggle({ on, theme, onClick, title }: { on: boolean; theme: Theme; onClick: () => void; title: string }) {
+  return (
+    <button onClick={onClick} role="switch" aria-checked={on} aria-label={title} title={title}
+      style={{
+        position: "relative", width: 26, height: 15, borderRadius: 8, padding: 0, cursor: "pointer", flex: "0 0 auto",
+        background: on ? theme.accent : theme.segBg,
+        border: `1px solid ${on ? theme.accent : theme.segBorder}`,
+        transition: "background .15s",
+      }}>
+      <span style={{
+        position: "absolute", top: 2, left: on ? 12 : 2, width: 9, height: 9, borderRadius: "50%",
+        background: "#fff", transition: "left .15s",
+      }} />
+    </button>
+  );
+}
+
 function ScreenshotButton({ theme, busy, onClick, td }: { theme: Theme; busy: boolean; onClick: () => void; td: Dict }) {
   const t = theme;
   return (
@@ -460,8 +478,9 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
           <div style={{ textAlign: "right" }}>
             <div style={{ font: `500 10px ${t.ui}`, color: t.dim }}>{tr.estCost}</div>
             <div style={{ font: `600 18px ${t.mono}`, color: t.accent, marginTop: 2 }}>{tr.currencySymbol}{(M.cost * tr.exchangeRate).toFixed(2)}</div>
-            <div style={{ font: `500 9.5px ${t.mono}`, color: t.faint, marginTop: 3 }}>
+            <div style={{ font: `500 9.5px ${t.mono}`, color: t.faint, marginTop: 3, display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
               {tr.balance} {balance ? fmtMoney(balance.totalBalance, balSym) : tr.costDash}
+              <TrayToggle on={trayMode === "balance"} theme={t} onClick={onToggleTrayMode} title={tr.trayModeHint} />
             </div>
           </div>
         </div>
@@ -591,13 +610,6 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
             background: t.segBg, color: t.segOffText,
           }}>
             {tr.quit}
-          </button>
-          <button onClick={onToggleTrayMode} title={tr.trayModeHint} style={{
-            flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer",
-            font: `600 11px ${t.ui}`, border: `1px solid ${t.segBorder}`,
-            background: t.segBg, color: t.segOffText,
-          }}>
-            {trayMode === "tokens" ? tr.trayTokens : tr.trayBalance}
           </button>
         </div>
         <div style={{ marginTop: 10, textAlign: "center", font: `500 9px ${t.ui}`, color: t.faint }}>

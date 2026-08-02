@@ -2435,7 +2435,7 @@ dependencies = [
 
 [[package]]
 name = "ocscale"
-version = "0.3.9"
+version = "0.4.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
