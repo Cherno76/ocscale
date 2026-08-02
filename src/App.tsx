@@ -226,8 +226,8 @@ function ScreenshotButton({ theme, busy, onClick, td }: { theme: Theme; busy: bo
   );
 }
 
-function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, toggleLang, onRefresh, version, balance }:
-  { dash: Dashboard; dark: boolean; themePref: "dark" | "light" | "system"; onToggleTheme: () => void; openGen: number; active: boolean; lang: Lang; toggleLang: () => void; onRefresh: () => void; version: string; balance: BalanceInfo | null }) {
+function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, toggleLang, onRefresh, version, balance, trayMode, onToggleTrayMode }:
+  { dash: Dashboard; dark: boolean; themePref: "dark" | "light" | "system"; onToggleTheme: () => void; openGen: number; active: boolean; lang: Lang; toggleLang: () => void; onRefresh: () => void; version: string; balance: BalanceInfo | null; trayMode: "tokens" | "balance"; onToggleTrayMode: () => void }) {
   const t = TH[dark ? "dark" : "light"];
   const { t: tr } = useT();
   const [tab, setTab] = useState<"Overview" | "Agents" | "Sessions">("Overview");
@@ -592,6 +592,13 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
           }}>
             {tr.quit}
           </button>
+          <button onClick={onToggleTrayMode} title={tr.trayModeHint} style={{
+            flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer",
+            font: `600 11px ${t.ui}`, border: `1px solid ${t.segBorder}`,
+            background: t.segBg, color: t.segOffText,
+          }}>
+            {trayMode === "tokens" ? tr.trayTokens : tr.trayBalance}
+          </button>
         </div>
         <div style={{ marginTop: 10, textAlign: "center", font: `500 9px ${t.ui}`, color: t.faint }}>
           OCScale v{version || "dev"} · © 2026
@@ -758,6 +765,7 @@ export default function App() {
   const [err, setErr] = useState<string | null>(null);
   const [version, setVersion] = useState("");
   const [balance, setBalance] = useState<BalanceInfo | null>(null);
+  const [trayMode, setTrayMode] = useState<"tokens" | "balance">("tokens");
   const applyDash = (d: Dashboard) => { setDash(d); setErr(null); };
   const [openGen, setOpenGen] = useState(0);
   const [focused, setFocused] = useState(true); // browser preview: always "focused"
@@ -789,6 +797,13 @@ export default function App() {
       try { localStorage.setItem("ocscale-theme", n); } catch {}
       return n;
     });
+  // Switch what the menu-bar / tray label shows (today's tokens vs balance).
+  const toggleTrayMode = () => {
+    const next = trayMode === "tokens" ? "balance" : "tokens";
+    invoke<string>("set_tray_mode", { mode: next })
+      .then((m) => setTrayMode(m === "balance" ? "balance" : "tokens"))
+      .catch(() => {});
+  };
 
   useEffect(() => {
     // initial load (shows the Loading state only until the first data arrives)
@@ -798,6 +813,7 @@ export default function App() {
     if (inTauri) {
       invoke<string>("get_version").then(setVersion).catch(() => {});
       invoke<BalanceInfo>("get_balance").then(setBalance).catch(() => {});
+      invoke<string>("get_tray_mode").then((m) => setTrayMode(m === "balance" ? "balance" : "tokens")).catch(() => {});
     } else {
       setVersion("dev");
     }
@@ -879,7 +895,7 @@ export default function App() {
           </div>
         : <Panel dash={dash} dark={dark} themePref={themePref} onToggleTheme={cycleTheme}
             openGen={openGen} active={focused} lang={curLang} toggleLang={toggleLang}
-            version={version} balance={balance}
+            version={version} balance={balance} trayMode={trayMode} onToggleTrayMode={toggleTrayMode}
             onRefresh={() => fetchDashboard().then(applyDash)} />}
     </I18nContext.Provider>
   );

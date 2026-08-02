@@ -69,6 +69,7 @@ App.tsx + charts.tsx (React, custom SVG charts — no chart library)
 - **`tauri-nspanel`** is a macOS-only git dependency (`ahkohd/tauri-nspanel` branch `v2`). Any code importing it must be `#[cfg(target_os = "macos")]`. It uses the deprecated `objc` crate — the `allow(deprecated)` in `lib.rs:2` is intentional.
 - **`macos-private-api`** Tauri feature is enabled for tray operations.
 - **macOS tray label**: shown next to the icon via `set_title()`. **Windows**: tray has no label — uses `set_tooltip()` instead. Both must be updated together.
+- **Tray label mode**: persisted pref `data_dir/ocscale/tray_mode.json` switches the tray label between today's tokens and the DeepSeek balance (`get_tray_mode` / `set_tray_mode` commands; toggle button in the panel footer). Both title and tooltip follow the mode.
 - **NSPanel**: the macOS window is converted to a non-activating NSPanel (level 25 = NSMainMenuWindowLevel + 1) so it floats over fullscreen apps without stealing focus. Panel hides on resign-key, Space change, and app activation.
 - **BUILD_LOCK**: `parser::build_dashboard()` is the single entry point for all data. It holds a Mutex — call it from `spawn_blocking`, never inline on the async runtime.
 - **30s background refresh**: the polling loop in `lib.rs:943-947` calls `refresh()` (build_dashboard + emit + tray update). The tray also refreshes on panel open via `get_dashboard` command.

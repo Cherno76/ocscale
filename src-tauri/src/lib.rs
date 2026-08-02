@@ -42,21 +42,37 @@ fn now_ms() -> i64 {
 /// the fresh data to the UI so an open popover updates live.
 fn refresh(app: &tauri::AppHandle) {
     let dash = parser::build_dashboard();
-    if let Some(tray) = app.tray_by_id("main") {
-        let label = fmt_tokens_m(dash.today_tokens);
-        // macOS shows the label next to the menu-bar icon (set_title). Windows'
-        // taskbar tray has no equivalent — set_title is a no-op there — so we
-        // surface the same number through the hover tooltip instead, the only
-        // text channel Shell_NotifyIcon exposes for a tray icon.
-        let _ = tray.set_title(Some(label.clone()));
-        let _ = tray.set_tooltip(Some(format!(
-            "OCScale v{} · today {}",
-            env!("CARGO_PKG_VERSION"),
-            label
-        )));
-    }
+    update_tray_label(app, &dash);
     check_milestones(app, &dash);
     let _ = app.emit("dashboard-updated", &dash);
+}
+
+/// Set the tray title + tooltip according to the saved tray mode. macOS shows
+/// the label next to the menu-bar icon (set_title); Windows' taskbar tray has
+/// no equivalent — set_title is a no-op there — so the same text goes into the
+/// hover tooltip, the only text channel Shell_NotifyIcon exposes.
+fn update_tray_label(app: &tauri::AppHandle, dash: &Dashboard) {
+    let Some(tray) = app.tray_by_id("main") else {
+        return;
+    };
+    let (label, sub) = match load_tray_mode() {
+        TrayMode::Tokens => {
+            let l = fmt_tokens_m(dash.today_tokens);
+            (l.clone(), format!("today {l}"))
+        }
+        TrayMode::Balance => match balance::balance() {
+            Some(b) => {
+                let l = fmt_balance_label(&b);
+                (l.clone(), format!("balance {l}"))
+            }
+            None => ("—".to_string(), "balance unavailable".to_string()),
+        },
+    };
+    let _ = tray.set_title(Some(label.clone()));
+    let _ = tray.set_tooltip(Some(format!(
+        "OCScale v{} · {sub}",
+        env!("CARGO_PKG_VERSION")
+    )));
 }
 
 /// Persisted 100M-token milestone snapshot. Stored in the app *data* dir so it
@@ -124,6 +140,46 @@ fn save_autostart_pref(on: bool) {
             let _ = std::fs::write(p, t);
         }
     }
+}
+
+// ── Tray label mode (tokens vs balance) ────────────────────────────
+// Persisted in the data dir like the autostart preference. Defaults to the
+// token count; `set_tray_mode` re-labels the tray immediately.
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum TrayMode {
+    Tokens,
+    Balance,
+}
+
+fn tray_mode_pref_path() -> Option<std::path::PathBuf> {
+    let dir = dirs::data_dir()?.join("ocscale");
+    let _ = std::fs::create_dir_all(&dir);
+    Some(dir.join("tray_mode.json"))
+}
+
+fn load_tray_mode() -> TrayMode {
+    let Some(p) = tray_mode_pref_path() else {
+        return TrayMode::Tokens;
+    };
+    std::fs::read_to_string(p)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or(TrayMode::Tokens)
+}
+
+fn save_tray_mode(m: TrayMode) {
+    if let Some(p) = tray_mode_pref_path() {
+        if let Ok(t) = serde_json::to_string(&m) {
+            let _ = std::fs::write(p, t);
+        }
+    }
+}
+
+fn tray_mode_name(m: TrayMode) -> String {
+    serde_json::to_string(&m)
+        .map(|s| s.trim_matches('"').to_string())
+        .unwrap_or_else(|_| "tokens".to_string())
 }
 
 /// Bring the OS launch-at-login registration in line with the saved preference,
@@ -635,23 +691,19 @@ async fn get_dashboard(app: tauri::AppHandle) -> Dashboard {
     // holds BUILD_LOCK — running it inline would block the command on the async
     // runtime and, with a large cache, stall the UI. Hop to a blocking worker
     // (the 30s refresh thread already runs the same work off the main thread).
-    let dash = tauri::async_runtime::spawn_blocking(parser::build_dashboard)
-        .await
-        .unwrap_or_else(|_| parser::build_dashboard());
-    // Sync the tray count to this freshly-fetched value. The panel refetches the
-    // instant it opens, while the tray otherwise only refreshes every 30s — so
-    // without this the two could disagree for up to 30s during heavy usage.
-    if let Some(tray) = app.tray_by_id("main") {
-        let label = fmt_tokens_m(dash.today_tokens);
-        let _ = tray.set_title(Some(label.clone()));
-        // Mirror refresh(): keep the tooltip in sync for Windows, where the
-        // title isn't shown next to the icon.
-        let _ = tray.set_tooltip(Some(format!(
-            "OCScale v{} · today {}",
-            env!("CARGO_PKG_VERSION"),
-            label
-        )));
-    }
+    // Sync the tray label to this freshly-fetched value. The panel refetches
+    // the instant it opens, while the tray otherwise only refreshes every 30s —
+    // so without this the two could disagree for up to 30s during heavy usage.
+    // Done inside spawn_blocking so a cold balance fetch never stalls the
+    // async runtime.
+    let app2 = app.clone();
+    let dash = tauri::async_runtime::spawn_blocking(move || {
+        let dash = parser::build_dashboard();
+        update_tray_label(&app2, &dash);
+        dash
+    })
+    .await
+    .unwrap_or_else(|_| parser::build_dashboard());
     check_milestones(&app, &dash);
     dash
 }
@@ -731,6 +783,34 @@ async fn get_balance() -> Option<balance::BalanceInfo> {
         .unwrap_or(None)
 }
 
+/// Current tray label mode: "tokens" or "balance".
+#[tauri::command]
+fn get_tray_mode() -> String {
+    tray_mode_name(load_tray_mode())
+}
+
+/// Switch the tray label between today's token count and the DeepSeek balance,
+/// persist the choice, and re-label the tray immediately.
+#[tauri::command]
+async fn set_tray_mode(app: tauri::AppHandle, mode: String) -> Result<String, String> {
+    let m = match mode.as_str() {
+        "balance" => TrayMode::Balance,
+        "tokens" => TrayMode::Tokens,
+        _ => return Err("mode must be \"tokens\" or \"balance\"".to_string()),
+    };
+    save_tray_mode(m);
+    // Re-label right away; a cold balance fetch can hit the network, so hop
+    // off the async runtime.
+    let app2 = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let dash = parser::build_dashboard();
+        update_tray_label(&app2, &dash);
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(tray_mode_name(m))
+}
+
 fn fmt_tokens_m(m: f64) -> String {
     if m >= 1.0 {
         format!("{:.2}M", m)
@@ -743,6 +823,20 @@ fn fmt_tokens_m(m: f64) -> String {
         } else {
             format!("{k}K")
         }
+    }
+}
+
+/// Compact tray label for a balance (¥ for CNY, $ for USD, else the code).
+fn fmt_balance_label(b: &balance::BalanceInfo) -> String {
+    let (sym, v) = match b.currency.as_str() {
+        "CNY" => ("¥", b.total_balance),
+        "USD" => ("$", b.total_balance),
+        other => return format!("{} {:.2}", other, b.total_balance),
+    };
+    if v >= 10000.0 {
+        format!("{sym}{:.1}K", v / 1000.0)
+    } else {
+        format!("{sym}{v:.2}")
     }
 }
 
@@ -772,7 +866,7 @@ pub fn run() {
     }
 
     builder
-        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag, get_autostart, set_autostart, quit_app, get_version, get_balance])
+        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag, get_autostart, set_autostart, quit_app, get_version, get_balance, get_tray_mode, set_tray_mode])
         .setup(move |app| {
             // Menu-bar–only app: no Dock icon, runs in the background.
             #[cfg(target_os = "macos")]
@@ -994,6 +1088,26 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn balance_label_formatting() {
+        let b = |total: f64, cur: &str| balance::BalanceInfo {
+            currency: cur.to_string(),
+            total_balance: total,
+            granted_balance: 0.0,
+            topped_up_balance: total,
+        };
+        assert_eq!(fmt_balance_label(&b(67.38, "CNY")), "¥67.38");
+        assert_eq!(fmt_balance_label(&b(110.0, "USD")), "$110.00");
+        assert_eq!(fmt_balance_label(&b(15000.0, "CNY")), "¥15.0K");
+        assert_eq!(fmt_balance_label(&b(5.5, "EUR")), "EUR 5.50");
+    }
+
+    #[test]
+    fn tray_mode_serde_names() {
+        assert_eq!(tray_mode_name(TrayMode::Tokens), "tokens");
+        assert_eq!(tray_mode_name(TrayMode::Balance), "balance");
+    }
 
     fn ms(wk: &str, wf: i64, mo: &str, mf: i64) -> MilestoneState {
         MilestoneState {
