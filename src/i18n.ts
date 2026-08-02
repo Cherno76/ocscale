@@ -14,6 +14,7 @@ const EN = {
   // Hero
   totalTokens: "Total tokens",
   estCost: "Est. cost",
+  balance: "Balance",
   // Cache split
   cached: "Cached",
   new_: "New",
@@ -105,6 +106,7 @@ const ZH: Dict = {
   month: "月",
   totalTokens: "总 Token 数",
   estCost: "预估费用",
+  balance: "当前余额",
   cached: "缓存",
   new_: "新增",
   pctCached: "% 命中缓存",

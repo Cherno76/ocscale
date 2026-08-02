@@ -1,6 +1,7 @@
 // tauri-nspanel uses the legacy objc crate; suppress its deprecation warnings.
 #![allow(deprecated, unexpected_cfgs)]
 
+mod balance;
 mod config;
 mod model;
 mod parser;
@@ -721,6 +722,15 @@ fn get_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
+/// DeepSeek account balance (cached 5 min in `balance.rs`); `null` when the
+/// API key / network / endpoint is unavailable.
+#[tauri::command]
+async fn get_balance() -> Option<balance::BalanceInfo> {
+    tauri::async_runtime::spawn_blocking(balance::balance)
+        .await
+        .unwrap_or(None)
+}
+
 fn fmt_tokens_m(m: f64) -> String {
     if m >= 1.0 {
         format!("{:.2}M", m)
@@ -762,7 +772,7 @@ pub fn run() {
     }
 
     builder
-        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag, get_autostart, set_autostart, quit_app, get_version])
+        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag, get_autostart, set_autostart, quit_app, get_version, get_balance])
         .setup(move |app| {
             // Menu-bar–only app: no Dock icon, runs in the background.
             #[cfg(target_os = "macos")]

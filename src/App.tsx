@@ -4,7 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { domToPng } from "modern-screenshot";
 import {
-  Dashboard, PeriodReport, ModelStat, ProjectStat, AgentStat, SessionInfo, Theme, TH,
+  Dashboard, PeriodReport, ModelStat, ProjectStat, AgentStat, BalanceInfo, SessionInfo, Theme, TH,
   fetchDashboard, fmtInt, fmtTokens, pct, fmtMoney,
 } from "./data";
 import {
@@ -226,8 +226,8 @@ function ScreenshotButton({ theme, busy, onClick, td }: { theme: Theme; busy: bo
   );
 }
 
-function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, toggleLang, onRefresh, version }:
-  { dash: Dashboard; dark: boolean; themePref: "dark" | "light" | "system"; onToggleTheme: () => void; openGen: number; active: boolean; lang: Lang; toggleLang: () => void; onRefresh: () => void; version: string }) {
+function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, toggleLang, onRefresh, version, balance }:
+  { dash: Dashboard; dark: boolean; themePref: "dark" | "light" | "system"; onToggleTheme: () => void; openGen: number; active: boolean; lang: Lang; toggleLang: () => void; onRefresh: () => void; version: string; balance: BalanceInfo | null }) {
   const t = TH[dark ? "dark" : "light"];
   const { t: tr } = useT();
   const [tab, setTab] = useState<"Overview" | "Agents" | "Sessions">("Overview");
@@ -337,6 +337,8 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
   const [shotBusy, setShotBusy] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const toastTimer = useRef<number | null>(null);
+  // ¥ for CNY, $ for USD, otherwise the currency code itself.
+  const balSym = balance ? (balance.currency === "CNY" ? "¥" : balance.currency === "USD" ? "$" : balance.currency + " ") : "";
   const showToast = (msg: string, ok: boolean) => {
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
     setToast({ msg, ok });
@@ -458,6 +460,9 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
           <div style={{ textAlign: "right" }}>
             <div style={{ font: `500 10px ${t.ui}`, color: t.dim }}>{tr.estCost}</div>
             <div style={{ font: `600 18px ${t.mono}`, color: t.accent, marginTop: 2 }}>{tr.currencySymbol}{(M.cost * tr.exchangeRate).toFixed(2)}</div>
+            <div style={{ font: `500 9.5px ${t.mono}`, color: t.faint, marginTop: 3 }}>
+              {tr.balance} {balance ? fmtMoney(balance.totalBalance, balSym) : tr.costDash}
+            </div>
           </div>
         </div>
         {/* cached vs rest (uncached input + output) — 2-colour pill. Dark segment
@@ -752,6 +757,7 @@ export default function App() {
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [version, setVersion] = useState("");
+  const [balance, setBalance] = useState<BalanceInfo | null>(null);
   const applyDash = (d: Dashboard) => { setDash(d); setErr(null); };
   const [openGen, setOpenGen] = useState(0);
   const [focused, setFocused] = useState(true); // browser preview: always "focused"
@@ -791,6 +797,7 @@ export default function App() {
     const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
     if (inTauri) {
       invoke<string>("get_version").then(setVersion).catch(() => {});
+      invoke<BalanceInfo>("get_balance").then(setBalance).catch(() => {});
     } else {
       setVersion("dev");
     }
@@ -821,6 +828,7 @@ export default function App() {
         if (focused) {
           setOpenGen((g) => g + 1); // re-run the count-up on each open
           fetchDashboard().then(applyDash).catch(() => {});
+          invoke<BalanceInfo>("get_balance").then(setBalance).catch(() => {});
         }
       })
       .then(track);
@@ -871,7 +879,7 @@ export default function App() {
           </div>
         : <Panel dash={dash} dark={dark} themePref={themePref} onToggleTheme={cycleTheme}
             openGen={openGen} active={focused} lang={curLang} toggleLang={toggleLang}
-            version={version}
+            version={version} balance={balance}
             onRefresh={() => fetchDashboard().then(applyDash)} />}
     </I18nContext.Provider>
   );

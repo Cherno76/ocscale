@@ -5,6 +5,7 @@ export interface ProjectStat { projectId: string; projectName: string; worktree:
 export interface ModelStat { name: string; vendor: string; tokens: number; cost: number; color: string; priced: boolean; costSource: string }
 export interface NamedCount { name: string; count: number }
 export interface AgentStat { agent: string; tokens: number; cost: number; requests: number; sessions: number }
+export interface BalanceInfo { currency: string; totalBalance: number; grantedBalance: number; toppedUpBalance: number }
 export interface CodeMetrics { additions: number; deletions: number; files: number; diffs: number }
 export interface SessionInfo { id: string; sessionTitle: string; agent: string; projectName: string; tokens: number; cost: number; durationSecs: number; timeCreated: string }
 export interface Metrics {
