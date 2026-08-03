@@ -204,8 +204,8 @@ function LangToggle({ lang, onClick, theme }: { lang: Lang; onClick: () => void;
   );
 }
 
-/// Small pill switch: ON = menu bar shows the DeepSeek balance, OFF = tokens.
-function TrayToggle({ on, theme, onClick, title }: { on: boolean; theme: Theme; onClick: () => void; title: string }) {
+/// Small pill switch used for on/off states (menu-bar mode, launch-at-login).
+function Switch({ on, theme, onClick, title }: { on: boolean; theme: Theme; onClick: () => void; title: string }) {
   return (
     <button onClick={onClick} role="switch" aria-checked={on} aria-label={title} title={title}
       style={{
@@ -218,6 +218,27 @@ function TrayToggle({ on, theme, onClick, title }: { on: boolean; theme: Theme; 
         position: "absolute", top: 2, left: on ? 12 : 2, width: 9, height: 9, borderRadius: "50%",
         background: "#fff", transition: "left .15s",
       }} />
+    </button>
+  );
+}
+
+/// Compact square icon button with hover feedback (danger tint for quit).
+function IconButton({ theme, title, onClick, danger, disabled, children }:
+  { theme: Theme; title: string; onClick: () => void; danger?: boolean; disabled?: boolean; children: React.ReactNode }) {
+  const [h, setH] = useState(false);
+  const t = theme;
+  return (
+    <button onClick={onClick} title={title} aria-label={title} disabled={disabled}
+      onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
+      style={{
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        width: 28, height: 28, borderRadius: 8, padding: 0, flex: "0 0 auto",
+        cursor: disabled ? "default" : "pointer",
+        background: h ? t.segOnBg : t.segBg, border: `1px solid ${t.segBorder}`,
+        color: danger && h ? "#e0795f" : t.dim,
+        transition: "background .15s, color .15s",
+      }}>
+      {children}
     </button>
   );
 }
@@ -480,7 +501,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
             <div style={{ font: `600 18px ${t.mono}`, color: t.accent, marginTop: 2 }}>{tr.currencySymbol}{(M.cost * tr.exchangeRate).toFixed(2)}</div>
             <div style={{ font: `500 9.5px ${t.mono}`, color: t.faint, marginTop: 3, display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
               {tr.balance} {balance ? fmtMoney(balance.totalBalance, balSym) : tr.costDash}
-              <TrayToggle on={trayMode === "balance"} theme={t} onClick={onToggleTrayMode} title={tr.trayModeHint} />
+              <Switch on={trayMode === "balance"} theme={t} onClick={onToggleTrayMode} title={tr.trayModeHint} />
             </div>
           </div>
         </div>
@@ -586,31 +607,24 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
         <Heatmap days={dash.heatmap} theme={t} accent={t.accent} td={tr} />
         {/* refresh, autostart, quit */}
         <SectionRule t={t} m="14px 0 10px" />
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={handleRefresh} disabled={refreshing} style={{
-            flex: 1, padding: "7px 0", borderRadius: 7, cursor: refreshing ? "default" : "pointer",
-            font: `600 11px ${t.ui}`, border: `1px solid ${t.segBorder}`,
-            background: refreshing ? t.segBg : t.segOnBg, color: refreshing ? t.segOffText : t.segOnText,
-            boxShadow: refreshing ? "none" : t.segOnShadow,
-          }}>
-            ⟳ {tr.refresh}
-          </button>
-          <button onClick={handleAutostart} style={{
-            flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer",
-            font: `600 11px ${t.ui}`, border: `1px solid ${t.segBorder}`,
-            background: autostartOn ? t.segOnBg : t.segBg,
-            color: autostartOn ? t.segOnText : t.segOffText,
-            boxShadow: autostartOn ? t.segOnShadow : "none",
-          }}>
-            {autostartOn ? "✓ " : ""}{tr.launchAtLogin}
-          </button>
-          <button onClick={handleQuit} style={{
-            flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer",
-            font: `600 11px ${t.ui}`, border: `1px solid ${t.segBorder}`,
-            background: t.segBg, color: t.segOffText,
-          }}>
-            {tr.quit}
-          </button>
+        {/* footer: refresh (icon) · launch-at-login (label + switch) · quit (icon) */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <IconButton theme={t} title={tr.refresh} onClick={handleRefresh} disabled={refreshing}>
+            <svg className={refreshing ? "om-spin" : undefined} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+              <path d="M21 3v6h-6" />
+            </svg>
+          </IconButton>
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+            <span style={{ font: `600 11px ${t.ui}`, color: t.dim }}>{tr.launchAtLogin}</span>
+            <Switch on={autostartOn} theme={t} onClick={handleAutostart} title={tr.launchAtLogin} />
+          </div>
+          <IconButton theme={t} title={tr.quit} onClick={handleQuit} danger>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2v10" />
+              <path d="M6.34 5.34a8 8 0 1 0 11.32 0" />
+            </svg>
+          </IconButton>
         </div>
         <div style={{ marginTop: 10, textAlign: "center", font: `500 9px ${t.ui}`, color: t.faint }}>
           OCScale v{version || "dev"} · © 2026
