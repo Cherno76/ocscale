@@ -376,13 +376,16 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
     }
   });
   // ── period paging (week/month ‹ ›) ──────────────────────────────
+  // Date titles follow the panel language (the system locale would otherwise
+  // leak Chinese month names into English mode).
+  const dateLocale = lang === "zh" ? "zh-CN" : "en-US";
   const fmtMonthTitle = (offset: number) =>
     new Date(new Date().getFullYear(), new Date().getMonth() + offset, 1)
-      .toLocaleDateString(undefined, { year: "numeric", month: "long" });
+      .toLocaleDateString(dateLocale, { year: "numeric", month: "long" });
   const fmtWeekTitle = (offset: number) => {
     const d = new Date();
     const mon = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7) + offset * 7);
-    const base = mon.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    const base = mon.toLocaleDateString(dateLocale, { month: "short", day: "numeric" });
     return offset === 0 ? `${base} (${tr.thisWeek})` : base;
   };
   const periodTitle = period === "Month" ? fmtMonthTitle(periodOffset) : fmtWeekTitle(periodOffset);
