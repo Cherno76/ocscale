@@ -89,6 +89,8 @@ const EN = {
   tokensByAgent: "Tokens by agent",
   costByAgent: "Cost by agent",
   byAgent: "Agent",
+  sourceOpenCode: "OpenCode",
+  sourceCodex: "Codex",
   // Code tab
   codeActivity: "Code activity",
   linesAdded: "Added",
@@ -173,6 +175,8 @@ const ZH: Dict = {
   tokensByAgent: "按 Agent 统计 Token",
   costByAgent: "按 Agent 统计费用",
   byAgent: "Agent",
+  sourceOpenCode: "OpenCode",
+  sourceCodex: "Codex",
   // Code tab
   codeActivity: "代码活动",
   linesAdded: "新增行",

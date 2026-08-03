@@ -361,17 +361,16 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
   const agentStats = P.agents || [];
   const maxA = Math.max(...agentStats.map((a) => a.tokens), 1e-9);
   const agentShares = sharePcts(agentStats.map((a) => a.tokens));
-  // Blue palette by rank (darkest → lightest), matching the Agents tab.
-  const AGENT_BLUES = ["#1e3a8a", "#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe"];
-  const agentColor = (i: number) => AGENT_BLUES[i % AGENT_BLUES.length];
-  // Keep donut colors aligned with the row colors by mapping over the full
-  // (already sorted) list and keeping only entries with cost > 0.
+  // Color by data source (green = OpenCode, orange = Codex), same as the
+  // Agents tab; rows and donut share one mapping.
+  const agentColors = agentColorsFor(agentStats);
+  const agentColorOf = (a: AgentStat) => agentColors.get(a.agent) ?? "#79817b";
   const agentCostItems: ModelStat[] = [];
-  agentStats.forEach((a, i) => {
+  agentStats.forEach((a) => {
     if (a.cost > 0) {
       agentCostItems.push({
         name: a.agent, vendor: "", tokens: a.tokens, cost: a.cost,
-        color: agentColor(i), priced: true, costSource: "pricing",
+        color: agentColorOf(a), priced: true, costSource: "pricing",
       });
     }
   });
@@ -591,7 +590,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
         ) : (
           <>
             {agentStats.length === 0 && <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
-            {agentStats.map((a, i) => <AgentRow key={i} a={a} max={maxA} theme={t} share={agentShares[i]} color={agentColor(i)} />)}
+            {agentStats.map((a, i) => <AgentRow key={i} a={a} max={maxA} theme={t} share={agentShares[i]} color={agentColorOf(a)} />)}
           </>
         )}
         <SectionRule t={t} m="10px 0 10px" />
@@ -721,33 +720,57 @@ function AgentRow({ a, max, theme, share, color }: { a: AgentStat; max: number; 
   );
 }
 
+// Agent colors by data source: green shades for OpenCode, orange for Codex,
+// darker → lighter by rank within the source (keeps per-source distinction
+// while still telling individual agents apart).
+const OPENCODE_AGENT_COLORS = ["#047857", "#059669", "#10b981", "#34d399", "#6ee7b7", "#a7f3d0"];
+const CODEX_AGENT_COLORS = ["#c2410c", "#ea580c", "#f97316", "#fb923c", "#fdba74", "#fed7aa"];
+function agentColorBySource(agent: string, rankInSource: number): string {
+  const pal = agent.startsWith("OpenCode-") ? OPENCODE_AGENT_COLORS : CODEX_AGENT_COLORS;
+  return pal[rankInSource % pal.length];
+}
+/// Precompute one color per agent (rows and donut must share the same mapping).
+function agentColorsFor(list: AgentStat[]): Map<string, string> {
+  const out = new Map<string, string>();
+  const rank = new Map<string, number>();
+  for (const a of list) {
+    const key = a.agent.startsWith("OpenCode-") ? "opencode" : "codex";
+    const i = rank.get(key) ?? 0;
+    rank.set(key, i + 1);
+    out.set(a.agent, agentColorBySource(a.agent, i));
+  }
+  return out;
+}
+
 function AgentsTab({ dash, theme, tr }: { dash: Dashboard; theme: Theme; tr: Dict }) {
   const agents = dash.agents || [];
   const max = Math.max(...agents.map(a => a.tokens), 1e-9);
   const shares = sharePcts(agents.map(a => a.tokens));
-  // Blue palette by rank (darkest → lightest), consistent between rows and donut
-  const BLUES = ["#1e3a8a", "#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe"];
-  const agentColor = (i: number) => BLUES[i % BLUES.length];
-  // Build donut items from agents with cost > 0
-  const costAgents: ModelStat[] = agents
-    .filter(a => a.cost > 0)
-    .map((a, i) => ({
-        name: a.agent,
-        vendor: "",
-        tokens: a.tokens,
-        cost: a.cost,
-        color: agentColor(i),
-        priced: true,
-        costSource: "pricing",
-      }
-    ));
+  // Color by data source (green = OpenCode, orange = Codex), darker → lighter
+  // by rank within the source; rows and donut share the same mapping.
+  const colors = agentColorsFor(agents);
+  const colorOf = (a: AgentStat) => colors.get(a.agent) ?? "#79817b";
+  // Build donut items from agents with cost > 0 (keeping row colors).
+  const costAgents: ModelStat[] = [];
+  agents.forEach((a) => {
+    if (a.cost > 0) {
+      costAgents.push({
+        name: a.agent, vendor: "", tokens: a.tokens, cost: a.cost,
+        color: colorOf(a), priced: true, costSource: "pricing",
+      });
+    }
+  });
   return (
     <>
       <div style={{ marginBottom: 9 }}><Label t={theme}>{tr.tokensByAgent}</Label></div>
+      <div style={{ display: "flex", gap: 14, marginBottom: 8, font: `500 9.5px ${theme.mono}`, color: theme.dim }}>
+        <span><span style={{ color: "#10b981" }}>●</span> {tr.sourceOpenCode}</span>
+        <span><span style={{ color: "#f97316" }}>●</span> {tr.sourceCodex}</span>
+      </div>
       {agents.length === 0 ? (
         <div style={{ font: `500 10.5px ${theme.mono}`, color: theme.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>
       ) : (
-        agents.map((a, i) => <AgentRow key={i} a={a} max={max} theme={theme} share={shares[i]} color={agentColor(i)} />)
+        agents.map((a, i) => <AgentRow key={i} a={a} max={max} theme={theme} share={shares[i]} color={colorOf(a)} />)
       )}
       {costAgents.length > 0 && (
         <>
