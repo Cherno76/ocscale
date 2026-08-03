@@ -11,6 +11,8 @@ const EN = {
   day: "Day",
   week: "Week",
   month: "Month",
+  dayLocal: "Local",
+  dayUtc: "UTC",
   // Hero
   totalTokens: "Total tokens",
   estCost: "Est. cost",
@@ -105,6 +107,8 @@ const ZH: Dict = {
   day: "日",
   week: "周",
   month: "月",
+  dayLocal: "本地日",
+  dayUtc: "平台日",
   totalTokens: "总 Token 数",
   estCost: "预估费用",
   balance: "当前余额",

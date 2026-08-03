@@ -41,7 +41,7 @@ fn now_ms() -> i64 {
 /// Rebuild the dashboard (incremental), update the tray's token count, and push
 /// the fresh data to the UI so an open popover updates live.
 fn refresh(app: &tauri::AppHandle) {
-    let dash = parser::build_dashboard();
+    let dash = parser::build_dashboard_with_mode(utc_day_enabled());
     update_tray_label(app, &dash);
     check_milestones(app, &dash);
     let _ = app.emit("dashboard-updated", &dash);
@@ -205,6 +205,51 @@ fn tray_mode_name(m: TrayMode) -> String {
     serde_json::to_string(&m)
         .map(|s| s.trim_matches('"').to_string())
         .unwrap_or_else(|_| "tokens".to_string())
+}
+
+// ── Day boundary mode (local calendar day vs UTC "platform day") ─────
+// DeepSeek's usage dashboard splits days on UTC, so a session that starts in
+// the early local morning lands on the *previous* platform day. The toggle
+// switches the Day report + tray "today" between the two boundaries.
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum DayMode {
+    Local,
+    Utc,
+}
+
+fn day_mode_pref_path() -> Option<std::path::PathBuf> {
+    let dir = dirs::data_dir()?.join("ocscale");
+    let _ = std::fs::create_dir_all(&dir);
+    Some(dir.join("day_mode.json"))
+}
+
+fn load_day_mode() -> DayMode {
+    let Some(p) = day_mode_pref_path() else {
+        return DayMode::Local;
+    };
+    std::fs::read_to_string(p)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or(DayMode::Local)
+}
+
+fn save_day_mode(m: DayMode) {
+    if let Some(p) = day_mode_pref_path() {
+        if let Ok(t) = serde_json::to_string(&m) {
+            let _ = std::fs::write(p, t);
+        }
+    }
+}
+
+fn day_mode_name(m: DayMode) -> String {
+    serde_json::to_string(&m)
+        .map(|s| s.trim_matches('"').to_string())
+        .unwrap_or_else(|_| "local".to_string())
+}
+
+fn utc_day_enabled() -> bool {
+    load_day_mode() == DayMode::Utc
 }
 
 /// Bring the OS launch-at-login registration in line with the saved preference,
@@ -729,12 +774,12 @@ async fn get_dashboard(app: tauri::AppHandle) -> Dashboard {
     // async runtime.
     let app2 = app.clone();
     let dash = tauri::async_runtime::spawn_blocking(move || {
-        let dash = parser::build_dashboard();
+        let dash = parser::build_dashboard_with_mode(utc_day_enabled());
         update_tray_label(&app2, &dash);
         dash
     })
     .await
-    .unwrap_or_else(|_| parser::build_dashboard());
+    .unwrap_or_else(|_| parser::build_dashboard_with_mode(utc_day_enabled()));
     check_milestones(&app, &dash);
     dash
 }
@@ -834,12 +879,38 @@ async fn set_tray_mode(app: tauri::AppHandle, mode: String) -> Result<String, St
     // off the async runtime.
     let app2 = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let dash = parser::build_dashboard();
+        let dash = parser::build_dashboard_with_mode(utc_day_enabled());
         update_tray_label(&app2, &dash);
     })
     .await
     .map_err(|e| e.to_string())?;
     Ok(tray_mode_name(m))
+}
+
+/// Current day-boundary mode: "local" (calendar day) or "utc" (platform day).
+#[tauri::command]
+fn get_day_mode() -> String {
+    day_mode_name(load_day_mode())
+}
+
+/// Switch the Day report + tray "today" between the local calendar day and the
+/// UTC day boundary DeepSeek's platform uses, persist, and re-label the tray.
+#[tauri::command]
+async fn set_day_mode(app: tauri::AppHandle, mode: String) -> Result<String, String> {
+    let m = match mode.as_str() {
+        "utc" => DayMode::Utc,
+        "local" => DayMode::Local,
+        _ => return Err("mode must be \"local\" or \"utc\"".to_string()),
+    };
+    save_day_mode(m);
+    let app2 = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let dash = parser::build_dashboard_with_mode(utc_day_enabled());
+        update_tray_label(&app2, &dash);
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(day_mode_name(m))
 }
 
 fn fmt_tokens_m(m: f64) -> String {
@@ -897,7 +968,7 @@ pub fn run() {
     }
 
     builder
-        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag, get_autostart, set_autostart, quit_app, get_version, get_balance, get_tray_mode, set_tray_mode])
+        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag, get_autostart, set_autostart, quit_app, get_version, get_balance, get_tray_mode, set_tray_mode, get_day_mode, set_day_mode])
         .setup(move |app| {
             // Menu-bar–only app: no Dock icon, runs in the background.
             #[cfg(target_os = "macos")]
@@ -1025,7 +1096,7 @@ pub fn run() {
             }
 
             // Build the menu-bar tray: app glyph (template icon) + today's tokens.
-            let dash = parser::build_dashboard();
+            let dash = parser::build_dashboard_with_mode(utc_day_enabled());
             let label = fmt_tokens_m(dash.today_tokens);
 
             let lh_tray = last_hidden.clone();

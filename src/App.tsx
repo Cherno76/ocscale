@@ -265,8 +265,8 @@ function ScreenshotButton({ theme, busy, onClick, td }: { theme: Theme; busy: bo
   );
 }
 
-function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, toggleLang, onRefresh, version, balance, trayMode, onToggleTrayMode }:
-  { dash: Dashboard; dark: boolean; themePref: "dark" | "light" | "system"; onToggleTheme: () => void; openGen: number; active: boolean; lang: Lang; toggleLang: () => void; onRefresh: () => void; version: string; balance: BalanceInfo | null; trayMode: "tokens" | "balance"; onToggleTrayMode: () => void }) {
+function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, toggleLang, onRefresh, version, balance, trayMode, onToggleTrayMode, dayMode, onDayModeChange }:
+  { dash: Dashboard; dark: boolean; themePref: "dark" | "light" | "system"; onToggleTheme: () => void; openGen: number; active: boolean; lang: Lang; toggleLang: () => void; onRefresh: () => void; version: string; balance: BalanceInfo | null; trayMode: "tokens" | "balance"; onToggleTrayMode: () => void; dayMode: "local" | "utc"; onDayModeChange: (m: "local" | "utc") => void }) {
   const t = TH[dark ? "dark" : "light"];
   const { t: tr } = useT();
   const [tab, setTab] = useState<"Overview" | "Agents" | "Sessions">("Overview");
@@ -516,6 +516,13 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
         <SplitLegend t={t} tr={tr} cacheM={M.cacheTokens} restM={M.inputTokens + M.outputTokens}
           cachedPct={pct(M.cacheTokens, M.totalTokens)}
           reasoningM={M.reasoningTokens > 0 ? M.reasoningTokens : undefined} />
+        {/* day boundary: local calendar vs UTC "platform day" (matches DeepSeek) */}
+        {period === "Day" && (
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+            <Segmented value={dayMode} items={[tr.dayLocal, tr.dayUtc]} itemValues={["local", "utc"]} theme={t}
+              onSelect={(v) => onDayModeChange(v as "local" | "utc")} />
+          </div>
+        )}
         {/* bar chart */}
         <BarChart data={P.series} theme={t} height={84} td={tr} />
         <SectionRule t={t} m="14px 0 10px" />
@@ -792,6 +799,7 @@ export default function App() {
   const [version, setVersion] = useState("");
   const [balance, setBalance] = useState<BalanceInfo | null>(null);
   const [trayMode, setTrayMode] = useState<"tokens" | "balance">("tokens");
+  const [dayMode, setDayMode] = useState<"local" | "utc">("local");
   const applyDash = (d: Dashboard) => { setDash(d); setErr(null); };
   const [openGen, setOpenGen] = useState(0);
   const [focused, setFocused] = useState(true); // browser preview: always "focused"
@@ -830,6 +838,13 @@ export default function App() {
       .then((m) => setTrayMode(m === "balance" ? "balance" : "tokens"))
       .catch(() => {});
   };
+  // Switch the Day view (and tray "today") between the local calendar day and
+  // the UTC boundary DeepSeek's platform uses, then refetch with the new mode.
+  const changeDayMode = (m: "local" | "utc") => {
+    setDayMode(m);
+    invoke<string>("set_day_mode", { mode: m }).catch(() => {});
+    fetchDashboard().then(applyDash).catch(() => {});
+  };
 
   useEffect(() => {
     // initial load (shows the Loading state only until the first data arrives)
@@ -840,6 +855,7 @@ export default function App() {
       invoke<string>("get_version").then(setVersion).catch(() => {});
       invoke<BalanceInfo>("get_balance").then(setBalance).catch(() => {});
       invoke<string>("get_tray_mode").then((m) => setTrayMode(m === "balance" ? "balance" : "tokens")).catch(() => {});
+      invoke<string>("get_day_mode").then((m) => setDayMode(m === "utc" ? "utc" : "local")).catch(() => {});
     } else {
       setVersion("dev");
     }
@@ -922,6 +938,7 @@ export default function App() {
         : <Panel dash={dash} dark={dark} themePref={themePref} onToggleTheme={cycleTheme}
             openGen={openGen} active={focused} lang={curLang} toggleLang={toggleLang}
             version={version} balance={balance} trayMode={trayMode} onToggleTrayMode={toggleTrayMode}
+            dayMode={dayMode} onDayModeChange={changeDayMode}
             onRefresh={() => fetchDashboard().then(applyDash)} />}
     </I18nContext.Provider>
   );

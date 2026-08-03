@@ -6,7 +6,7 @@ use crate::config::UserConfig;
 use crate::model::*;
 use crate::pricing::Pricing;
 use crate::store::{RawEvent, Store};
-use chrono::{DateTime, Datelike, Duration, Local, Timelike};
+use chrono::{DateTime, Datelike, Duration, Local, Timelike, Utc};
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
@@ -16,6 +16,9 @@ static BUILD_LOCK: Mutex<()> = Mutex::new(());
 
 // One assistant API response, with config + pricing applied (derived per request
 // from a RawEvent, since user config / prices / time windows can all change).
+// One assistant API response, with config + pricing applied (derived per request
+// from a RawEvent, since user config / prices / time windows can all change).
+#[derive(Clone)]
 struct Event {
     ts: DateTime<Local>,
     session: String,
@@ -82,6 +85,13 @@ fn vendor_of(model: &str) -> &'static str {
 }
 
 pub fn build_dashboard() -> Dashboard {
+    build_dashboard_with_mode(false)
+}
+
+/// Dashboard with the day-boundary mode applied: `utc_day` switches the Day
+/// report and the tray's "today" to the UTC boundary (matches DeepSeek's
+/// platform usage dashboard); week/month/heatmap stay on the local calendar.
+pub fn build_dashboard_with_mode(utc_day: bool) -> Dashboard {
     let _guard = BUILD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     // 1. OpenCode: incremental ingest, prune to the heatmap window, persist only
@@ -104,13 +114,20 @@ pub fn build_dashboard() -> Dashboard {
     events.retain(|e| e.ts_ms >= cutoff);
     events.sort_by_key(|e| e.ts_ms);
 
-    build_dashboard_from(&events)
+    build_dashboard_from_mode(&events, utc_day)
 }
 
 /// Shared aggregation core: turns any `RawEvent` stream (OpenCode SQLite, or the
 /// Codex feasibility prototype in `store_codex`) into a Dashboard. Holds no lock
 /// and performs no store IO — callers own serialization and data loading.
 pub fn build_dashboard_from(events: &[RawEvent]) -> Dashboard {
+    build_dashboard_from_mode(events, false)
+}
+
+/// Shared aggregation core: turns any `RawEvent` stream (OpenCode SQLite, or the
+/// Codex feasibility prototype in `store_codex`) into a Dashboard. Holds no lock
+/// and performs no store IO — callers own serialization and data loading.
+pub fn build_dashboard_from_mode(events: &[RawEvent], utc_day: bool) -> Dashboard {
     // 2. Aggregate: apply current config + prices, slice by current time.
     let cfg = UserConfig::load();
     // Memoized price table (cheap clone); loaded/refreshed off-thread elsewhere
@@ -124,7 +141,7 @@ pub fn build_dashboard_from(events: &[RawEvent]) -> Dashboard {
     let now = Local::now();
     let today = now.date_naive();
 
-    let mut day = report_day(&events, now);
+    let mut day = report_day(&events, now, utc_day);
     let mut week = report_week(&events, now);
     let mut month = report_month(&events, now);
     let heatmap = build_heatmap(&events, today);
@@ -141,7 +158,13 @@ pub fn build_dashboard_from(events: &[RawEvent]) -> Dashboard {
     // today's displayed tokens (M) for the tray
     let today_tokens: f64 = events
         .iter()
-        .filter(|e| e.ts.date_naive() == today)
+        .filter(|e| {
+            if utc_day {
+                e.ts.with_timezone(&Utc).date_naive() == now.with_timezone(&Utc).date_naive()
+            } else {
+                e.ts.date_naive() == today
+            }
+        })
         .map(|e| (e.input + e.cache + e.output + e.reasoning) / 1e6)
         .sum();
 
@@ -537,8 +560,14 @@ fn aggregate_projects(events: &[&Event]) -> Vec<ProjectStat> {
 }
 
 // ── Day report: today, 24 hourly buckets ───────────────────────────
-fn report_day(events: &[Event], now: DateTime<Local>) -> PeriodReport {
-    let today = now.date_naive();
+fn report_day(events: &[Event], now: DateTime<Local>, utc_day: bool) -> PeriodReport {
+    // "Platform day" (UTC) mirrors DeepSeek's usage dashboard day boundary; the
+    // default local day is the user's calendar day.
+    let today = if utc_day {
+        now.with_timezone(&Utc).date_naive()
+    } else {
+        now.date_naive()
+    };
     let yesterday = today - Duration::days(1);
     let mut agg = Agg::default();
     let mut prev = Agg::default();
@@ -548,11 +577,19 @@ fn report_day(events: &[Event], now: DateTime<Local>) -> PeriodReport {
     let mut period_events: Vec<&Event> = Vec::new();
 
     for e in events {
-        let d = e.ts.date_naive();
+        let d = if utc_day {
+            e.ts.with_timezone(&Utc).date_naive()
+        } else {
+            e.ts.date_naive()
+        };
         if d == today {
             period_events.push(e);
             agg.add(e);
-            let h = e.ts.hour() as usize;
+            let h = if utc_day {
+                e.ts.with_timezone(&Utc).hour() as usize
+            } else {
+                e.ts.hour() as usize
+            };
             buckets[h].0 += e.input / 1e6;
             buckets[h].1 += e.cache / 1e6;
             buckets[h].2 += e.output / 1e6;
@@ -820,4 +857,56 @@ fn build_heatmap(events: &[Event], today: chrono::NaiveDate) -> Vec<HeatDay> {
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    fn event_at(ts: &str, input: f64) -> Event {
+        let ts = DateTime::parse_from_rfc3339(ts)
+            .unwrap()
+            .with_timezone(&Local);
+        Event {
+            ts,
+            session: "s".to_string(),
+            model: "m".to_string(),
+            input,
+            cache: 0.0,
+            output: 0.0,
+            reasoning: 0.0,
+            cost: 0.0,
+            priced: true,
+            cost_source: "pricing".to_string(),
+            mcp: Vec::new(),
+            skills: Vec::new(),
+            project_id: "p".to_string(),
+            project_name: "p".to_string(),
+            agent: "a".to_string(),
+            code_additions: 0,
+            code_deletions: 0,
+            code_files: 0,
+            code_diffs: 0,
+            session_duration_ms: 0,
+            session_time_created_ms: 0,
+            session_title: String::new(),
+        }
+    }
+
+    /// 2026-08-02T17:30:00Z == 2026-08-03 01:30 local (+08): inside the local
+    /// day but outside the UTC ("platform") day.
+    #[test]
+    fn platform_day_boundary_excludes_early_local_morning() {
+        let ev = event_at("2026-08-02T17:30:00Z", 2_000_000.0);
+        let now = Local.with_ymd_and_hms(2026, 8, 3, 9, 30, 0).unwrap();
+
+        let local = report_day(&[ev.clone()], now, false);
+        assert_eq!(local.metrics.total_tokens, 2.0);
+        assert_eq!(local.series[1].input, 2.0); // local hour 01
+
+        let utc = report_day(&[ev.clone()], now, true);
+        assert_eq!(utc.metrics.total_tokens, 0.0); // UTC date is Aug 2 → not today
+        assert!(utc.series.iter().all(|p| p.input == 0.0));
+    }
 }
