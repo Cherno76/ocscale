@@ -513,24 +513,27 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
               <span style={{ font: `500 9.5px ${t.mono}`, color: t.faint, marginLeft: 2 }}>v{version || "dev"} · © 2026</span>
             </div>
             <div data-no-drag="" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "default" }}>
-              {tab === "Overview" && (
-                <Segmented value={period} items={periodItems} itemValues={["Day","Week","Month"]} theme={t}
-                  onSelect={(v) => { setPeriod(v as any); setPeriodOffset(0); setPagedReport(null); }} />
-              )}
+              <Segmented value={tab} items={[tr.overview, tr.agents, tr.sessionsTab]}
+                itemValues={["Overview","Agents","Sessions"]} theme={t}
+                onSelect={(v) => setTab(v as any)} />
               <ThemeToggle pref={themePref} theme={t} td={tr} onCycle={onToggleTheme} />
               <LangToggle lang={lang} onClick={toggleLang} theme={t} />
               <ScreenshotButton theme={t} busy={shotBusy} onClick={captureScreenshot} td={tr} />
             </div>
           </div>
-          {/* tab bar: tabs on the left, refresh/quit pinned to the far right */}
+          {/* period row: day/week/month on the left (Overview only), launch-at-
+              login + refresh/quit pinned to the far right */}
           <div style={{
             display: "flex", alignItems: "center", justifyContent: "space-between",
             padding: "0 10px 10px",
             borderBottom: `1px solid ${t.gridLine}`,
           }}>
-            <Segmented value={tab} items={[tr.overview, tr.agents, tr.sessionsTab]}
-              itemValues={["Overview","Agents","Sessions"]} theme={t}
-              onSelect={(v) => setTab(v as any)} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 26 }}>
+              {tab === "Overview" && (
+                <Segmented value={period} items={periodItems} itemValues={["Day","Week","Month"]} theme={t}
+                  onSelect={(v) => { setPeriod(v as any); setPeriodOffset(0); setPagedReport(null); }} />
+              )}
+            </div>
             <div data-no-drag="" style={{ display: "flex", alignItems: "center", gap: 6, cursor: "default" }}>
               <span style={{ font: `600 10.5px ${t.ui}`, color: t.dim, whiteSpace: "nowrap" }}>{tr.launchAtLogin}</span>
               <Switch on={autostartOn} theme={t} onClick={handleAutostart} title={tr.launchAtLogin} />
