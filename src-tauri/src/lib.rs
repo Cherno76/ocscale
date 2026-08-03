@@ -523,7 +523,7 @@ fn position_panel(app: &tauri::AppHandle) {
 
     if let Some(state) = app.try_state::<TrayAnchor>() {
         if let Some((tx, ty, tw, th)) = *state.0.lock().unwrap() {
-            let x = tx + tw / 2.0 - win_w / 2.0;
+            let x = clamped_panel_left(app, (tx + tw / 2.0, ty), win_w);
             let y = ty + th;
             let _ = w.set_position(tauri::PhysicalPosition::new(x as i32, y as i32));
             return;
@@ -534,7 +534,7 @@ fn position_panel(app: &tauri::AppHandle) {
     if let Ok(Some(monitor)) = w.current_monitor() {
         let mp = monitor.position();
         let ms = monitor.size();
-        let x = mp.x as f64 + (ms.width as f64 - win_w) / 2.0;
+        let x = clamped_panel_left(app, (mp.x as f64 + ms.width as f64 / 2.0, mp.y as f64), win_w);
         let y = mp.y as f64 + 24.0 * monitor.scale_factor();
         let _ = w.set_position(tauri::PhysicalPosition::new(x as i32, y as i32));
     }
@@ -568,10 +568,58 @@ fn save_popover_pos(x: i32, y: i32) {
     }
 }
 
+/// Clamp the popover's left edge so the whole panel stays inside the monitor
+/// that contains the given anchor point (the tray icon sits in the menu bar,
+/// so without this a wider popover would spill past the right edge of the
+/// screen). Falls back to the primary monitor. Shared by position_panel and
+/// fit_panel.
+fn clamped_panel_left(app: &tauri::AppHandle, anchor: (f64, f64), win_w: f64) -> f64 {
+    let area = app
+        .available_monitors()
+        .ok()
+        .and_then(|ms| ms.into_iter().find(|m| {
+            let p = m.position();
+            let s = m.size();
+            anchor.0 >= p.x as f64
+                && anchor.0 <= p.x as f64 + s.width as f64
+                && anchor.1 >= p.y as f64
+                && anchor.1 <= p.y as f64 + s.height as f64
+        }))
+        .or_else(|| app.primary_monitor().ok().flatten())
+        .map(|m| {
+            let a = m.work_area();
+            (a.position.x as f64, a.position.x as f64 + a.size.width as f64)
+        })
+        .unwrap_or((0.0, win_w.max(800.0)));
+    (anchor.0 - win_w / 2.0).clamp(area.0, (area.1 - win_w).max(area.0))
+}
+
+/// Fit the popover height to its content (the frontend measures the card after
+/// each data/tab change). Width stays fixed at 800. The panel keeps its current
+/// top-left corner — the position is only set on open (position_panel) and is
+/// never re-pinned to the tray anchor here, otherwise every resize while the
+/// popover is open yanks it horizontally back to the menu-bar icon. The size
+/// change is applied and the original position re-applied so the popover grows
+/// downward from the menu bar. Clamped so a huge dashboard still scrolls
+/// instead of filling the screen.
+#[tauri::command]
+fn fit_panel(app: tauri::AppHandle, height: f64) {
+    const POPOVER_W: f64 = 800.0;
+    let Some(w) = app.get_webview_window("main") else {
+        return;
+    };
+    let h = height.clamp(400.0, 800.0);
+    let pos = w.outer_position().ok();
+    let _ = w.set_size(tauri::LogicalSize::new(POPOVER_W, h));
+    if let Some(p) = pos {
+        let _ = w.set_position(p);
+    }
+}
+
 /// Centre the panel on the current monitor.
 #[cfg(not(target_os = "macos"))]
 fn position_popover_windows(app: &tauri::AppHandle) {
-    const POPOVER_W: f64 = 400.0;
+    const POPOVER_W: f64 = 800.0;
     const POPOVER_H: f64 = 660.0;
 
     let Some(w) = app.get_webview_window("main") else {
@@ -592,11 +640,17 @@ fn position_popover_windows(app: &tauri::AppHandle) {
         let scale = m.scale_factor();
         let win_w = POPOVER_W * scale;
         let win_h = POPOVER_H * scale;
-        let x = area.position.x as f64 + (area.size.width as f64 - win_w) / 2.0;
-        let y = area.position.y as f64 + (area.size.height as f64 - win_h) / 2.0;
+        // Centre it, but clamp into the work area so a narrow/small monitor
+        // never gets the wider popover pushed off-screen.
+        let min_x = area.position.x as f64;
+        let min_y = area.position.y as f64;
+        let max_x = (min_x + area.size.width as f64 - win_w).max(min_x);
+        let max_y = (min_y + area.size.height as f64 - win_h).max(min_y);
+        let x = (min_x + (area.size.width as f64 - win_w) / 2.0).clamp(min_x, max_x);
+        let y = (min_y + (area.size.height as f64 - win_h) / 2.0).clamp(min_y, max_y);
         let _ = w.set_position(tauri::PhysicalPosition::new(
-            x.max(0.0) as i32,
-            y.max(0.0) as i32,
+            x as i32,
+            y as i32,
         ));
         fit(scale);
     } else {
@@ -978,7 +1032,7 @@ pub fn run() {
     }
 
     builder
-        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag, get_autostart, set_autostart, quit_app, get_version, get_balance, get_tray_mode, set_tray_mode, get_day_mode, set_day_mode, get_period])
+        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag, get_autostart, set_autostart, quit_app, get_version, get_balance, get_tray_mode, set_tray_mode, get_day_mode, set_day_mode, get_period, fit_panel])
         .setup(move |app| {
             // Menu-bar–only app: no Dock icon, runs in the background.
             #[cfg(target_os = "macos")]

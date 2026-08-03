@@ -291,6 +291,25 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
       );
     }
   }, []);
+  // ── auto-fit the popover height to its content ──────────────────────────
+  // The window is 800 wide; height follows the content (data volume, tab,
+  // period) so there's no dead space at the bottom. Debounced re-measure after
+  // renders that can change the height; Rust clamps 400–800 and re-pins the
+  // macOS panel under the tray icon so the top edge never drifts.
+  useEffect(() => {
+    if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return;
+    const id = window.setTimeout(() => {
+      const card = document.querySelector<HTMLElement>(".om-scroll");
+      if (!card) return;
+      const header = card.firstElementChild as HTMLElement | null;
+      const body = header?.nextElementSibling as HTMLElement | null;
+      if (!header || !body) return;
+      // card border is 1px top + 1px bottom
+      const height = Math.round(header.offsetHeight + body.offsetHeight + 2);
+      invoke("fit_panel", { height }).catch(() => {});
+    }, 120);
+    return () => window.clearTimeout(id);
+  }, [dash, tab, period, lang, openGen, pagedReport]);
   const handleRefresh = () => {
     if (refreshing) return;
     setRefreshing(true);
@@ -491,6 +510,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <TokenGlyph color={t.accent} size={16} />
               <span style={{ font: `600 13px ${t.ui}`, color: t.text, letterSpacing: ".01em" }}>{tr.appName}</span>
+              <span style={{ font: `500 9.5px ${t.mono}`, color: t.faint, marginLeft: 2 }}>v{version || "dev"} · © 2026</span>
             </div>
             <div data-no-drag="" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "default" }}>
               {tab === "Overview" && (
@@ -502,185 +522,195 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
               <ScreenshotButton theme={t} busy={shotBusy} onClick={captureScreenshot} td={tr} />
             </div>
           </div>
-          {/* tab bar */}
+          {/* tab bar: tabs on the left, refresh/quit pinned to the far right */}
           <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
             padding: "0 10px 10px",
             borderBottom: `1px solid ${t.gridLine}`,
           }}>
             <Segmented value={tab} items={[tr.overview, tr.agents, tr.sessionsTab]}
               itemValues={["Overview","Agents","Sessions"]} theme={t}
               onSelect={(v) => setTab(v as any)} />
+            <div data-no-drag="" style={{ display: "flex", alignItems: "center", gap: 6, cursor: "default" }}>
+              <span style={{ font: `600 10.5px ${t.ui}`, color: t.dim, whiteSpace: "nowrap" }}>{tr.launchAtLogin}</span>
+              <Switch on={autostartOn} theme={t} onClick={handleAutostart} title={tr.launchAtLogin} />
+              <div style={{ width: 8 }} />
+              <IconButton theme={t} title={tr.refresh} onClick={handleRefresh} disabled={refreshing}>
+                <svg className={refreshing ? "om-spin" : undefined} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                  <path d="M21 3v6h-6" />
+                </svg>
+              </IconButton>
+              <IconButton theme={t} title={tr.quit} onClick={handleQuit} danger>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2v10" />
+                  <path d="M6.34 5.34a8 8 0 1 0 11.32 0" />
+                </svg>
+              </IconButton>
+            </div>
           </div>
         </div>
-        {/* scrolling body */}
+        {/* scrolling body — two columns now the panel is wider: left holds the
+            period headline + token bars, right holds cost/stats/tools/activity.
+            Inner lists are height-capped so the whole panel usually fits without
+            scrolling; the outer container still scrolls as a fallback. */}
         <div style={{ padding: "14px 15px 15px" }}>
         {tab === "Overview" && <>
-        {/* hero */}
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 10 }}>
-          <div>
-            <div style={{ font: `500 10px ${t.ui}`, color: t.dim, letterSpacing: ".04em", textTransform: "uppercase" }}>{tr.totalTokens}</div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 3 }}>
-              <span style={{ font: `600 30px ${t.mono}`, color: t.text, letterSpacing: "-.01em" }}>{animTotal.toFixed(2)}<span style={{ font: `500 15px ${t.mono}`, color: t.dim, marginLeft: 2 }}>M</span></span>
-              {Math.round(M.deltaTokens) !== 0 && <Delta v={M.deltaTokens} theme={t} />}
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.35fr) minmax(0, 1fr)", gap: "0 18px", alignItems: "start" }}>
+          {/* ── left column ── */}
+          <div style={{ minWidth: 0, borderRight: `1px solid ${t.gridLine}`, paddingRight: 18 }}>
+            {/* hero */}
+            <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 10 }}>
+              <div>
+                <div style={{ font: `500 10px ${t.ui}`, color: t.dim, letterSpacing: ".04em", textTransform: "uppercase" }}>{tr.totalTokens}</div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 3 }}>
+                  <span style={{ font: `600 30px ${t.mono}`, color: t.text, letterSpacing: "-.01em" }}>{animTotal.toFixed(2)}<span style={{ font: `500 15px ${t.mono}`, color: t.dim, marginLeft: 2 }}>M</span></span>
+                  {Math.round(M.deltaTokens) !== 0 && <Delta v={M.deltaTokens} theme={t} />}
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ font: `500 10px ${t.ui}`, color: t.dim }}>{tr.estCost}</div>
+                <div style={{ font: `600 18px ${t.mono}`, color: t.accent, marginTop: 2 }}>{tr.currencySymbol}{(M.cost * tr.exchangeRate).toFixed(2)}</div>
+                <div style={{ font: `500 9.5px ${t.mono}`, color: t.faint, marginTop: 3, display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+                  {tr.balance} {balance ? fmtMoney(balance.totalBalance, balSym) : tr.costDash}
+                  <Switch on={trayMode === "balance"} theme={t} onClick={onToggleTrayMode} title={tr.trayModeHint} />
+                </div>
+              </div>
             </div>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ font: `500 10px ${t.ui}`, color: t.dim }}>{tr.estCost}</div>
-            <div style={{ font: `600 18px ${t.mono}`, color: t.accent, marginTop: 2 }}>{tr.currencySymbol}{(M.cost * tr.exchangeRate).toFixed(2)}</div>
-            <div style={{ font: `500 9.5px ${t.mono}`, color: t.faint, marginTop: 3, display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
-              {tr.balance} {balance ? fmtMoney(balance.totalBalance, balSym) : tr.costDash}
-              <Switch on={trayMode === "balance"} theme={t} onClick={onToggleTrayMode} title={tr.trayModeHint} />
+            {/* cached vs rest (uncached input + output) — 2-colour pill. Dark segment
+                is the cache share, matching the "% cached" label below. */}
+            <div style={{ display: "flex", height: 7, borderRadius: 4, overflow: "hidden", marginBottom: 5, background: t.gridLine }}>
+              {M.totalTokens > 0 && <>
+                <div style={{ width: `${cachePct}%`, background: t.accent }} />
+                <div style={{ width: `${restPct}%`, background: t.accentSoft }} />
+              </>}
             </div>
-          </div>
-        </div>
-        {/* cached vs rest (uncached input + output) — 2-colour pill. Dark segment
-            is the cache share, matching the "% cached" label below. */}
-        <div style={{ display: "flex", height: 7, borderRadius: 4, overflow: "hidden", marginBottom: 5, background: t.gridLine }}>
-          {M.totalTokens > 0 && <>
-            <div style={{ width: `${cachePct}%`, background: t.accent }} />
-            <div style={{ width: `${restPct}%`, background: t.accentSoft }} />
-          </>}
-        </div>
-        <SplitLegend t={t} tr={tr} cacheM={M.cacheTokens} restM={M.inputTokens + M.outputTokens}
-          cachedPct={pct(M.cacheTokens, M.totalTokens)}
-          reasoningM={M.reasoningTokens > 0 ? M.reasoningTokens : undefined} />
-        {/* day boundary: local calendar vs UTC "platform day" (matches DeepSeek) */}
-        {period === "Day" && (
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-            <Segmented value={dayMode} items={[tr.dayLocal, tr.dayUtc]} itemValues={["local", "utc"]} theme={t}
-              onSelect={(v) => onDayModeChange(v as "local" | "utc")} />
-          </div>
-        )}
-        {/* period paging: ‹ › for week/month (0 = current) */}
-        {period !== "Day" && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginBottom: 8 }}>
-            <button onClick={() => goPeriod(-1)} title="previous" aria-label="previous period" style={{
-              width: 22, height: 22, borderRadius: 6, cursor: "pointer", padding: 0,
-              display: "inline-flex", alignItems: "center", justifyContent: "center",
-              font: `600 12px ${t.mono}`, color: t.dim,
-              background: t.segBg, border: `1px solid ${t.segBorder}`,
-            }}>‹</button>
-            <span style={{ font: `600 11px ${t.mono}`, color: t.dim }}>{periodTitle}</span>
-            <button onClick={() => goPeriod(1)} title="next" aria-label="next period" style={{
-              width: 22, height: 22, borderRadius: 6, cursor: "pointer", padding: 0,
-              display: "inline-flex", alignItems: "center", justifyContent: "center",
-              font: `600 12px ${t.mono}`, color: t.dim,
-              background: t.segBg, border: `1px solid ${t.segBorder}`,
-            }}>›</button>
-          </div>
-        )}
-        {/* bar chart */}
-        <BarChart data={P.series} theme={t} height={84} td={tr} />
-        <SectionRule t={t} m="14px 0 10px" />
-        {/* models / projects — tabbed */}
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
-          <Label t={t}>{costTab === "model" ? tr.tokensByModel : costTab === "project" ? tr.byProject : tr.tokensByAgent}</Label>
-          <Segmented value={costTab} items={[tr.model, tr.project, tr.byAgent]} itemValues={["model", "project", "agent"]} theme={t} onSelect={(v) => setCostTab(v as "model" | "project" | "agent")} />
-        </div>
-        {costTab === "model" ? (
-          <>
-            {tokenModels.length === 0 && <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
-            {tokenModels.map((m, i) => <ModelRow key={i} m={m} max={maxM} theme={t} share={tokenShares[i]} />)}
-          </>
-        ) : costTab === "project" ? (
-          <>
-            {projectTokens.length === 0 && <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
-            {projectTokens.map((p, i) => <ProjectRow key={i} p={p} max={maxP} theme={t} share={projectShares[i]} />)}
-          </>
-        ) : (
-          <>
-            {agentStats.length === 0 && <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
-            {agentStats.map((a, i) => <AgentRow key={i} a={a} max={maxA} theme={t} share={agentShares[i]} color={agentColorOf(a)} />)}
-          </>
-        )}
-        <SectionRule t={t} m="10px 0 10px" />
-        {/* cost donut — same tab */}
-        <div style={{ marginBottom: 8 }}><Label t={t}>{costTab === "model" ? tr.costByModel : costTab === "project" ? tr.costByProject : tr.costByAgent}</Label></div>
-        {costTab === "model" ? (
-          costModels.length > 0
-            ? <CostDonut models={costModels} theme={t} size={100} thickness={15}
-                currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} />
-            : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
-        ) : costTab === "project" ? (
-          projectCostItems.length > 0
-            ? <CostDonut models={projectCostItems} theme={t} size={100} thickness={15}
-                currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} />
-            : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
-        ) : (
-          agentCostItems.length > 0
-            ? <CostDonut models={agentCostItems} theme={t} size={100} thickness={15}
-                currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} preserveColors />
-            : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
-        )}
-        {costTab === "model" && unpricedModels.length > 0 && (
-          <div style={{ marginTop: 9, font: `500 9.5px/1.5 ${t.mono}`, color: t.faint }}>
-            {tr.modelsWithoutPricing(unpricedModels.length)}{" "}
-            <span style={{ color: t.dim }}>{unpricedModels.map((m) => m.name).join(", ")}</span>
-          </div>
-        )}
-        <SectionRule t={t} m="12px 0 12px" />
-        {/* footer stats */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <MiniStat label={tr.requests} value={fmtInt(M.requests)} sub={`${M.sessions} ${tr.sessions}`} theme={t}>
-            <Sparkline values={P.reqTrend.length ? P.reqTrend : [0, 0]} theme={t} width={52} height={20} accent={t.accent} />
-          </MiniStat>
-          <MiniStat label={tr.costTrend} value={`${tr.currencySymbol}${(M.cost * tr.exchangeRate).toFixed(2)}`} sub={trendSub} theme={t} accent={t.accent}>
-            <Sparkline values={P.costTrend.length ? P.costTrend : [0, 0]} theme={t} width={52} height={20} accent={t.accent} />
-          </MiniStat>
-        </div>
-        {/* MCP — shown whenever the user has installed MCP servers */}
-        {M.servers > 0 && (
-          <>
-            <SectionRule t={t} />
-            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 7 }}>
-              <Label t={t}>{tr.mcpCalls}</Label>
-              <span style={{ font: `500 10px ${t.mono}`, color: t.faint, whiteSpace: "nowrap" }}><span style={{ color: t.text, fontWeight: 600 }}>{fmtInt(M.mcpCalls)}</span> · {M.servers} {tr.servers}</span>
+            <SplitLegend t={t} tr={tr} cacheM={M.cacheTokens} restM={M.inputTokens + M.outputTokens}
+              cachedPct={pct(M.cacheTokens, M.totalTokens)}
+              reasoningM={M.reasoningTokens > 0 ? M.reasoningTokens : undefined} />
+            {/* day boundary: local calendar vs UTC "platform day" (matches DeepSeek) */}
+            {period === "Day" && (
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+                <Segmented value={dayMode} items={[tr.dayLocal, tr.dayUtc]} itemValues={["local", "utc"]} theme={t}
+                  onSelect={(v) => onDayModeChange(v as "local" | "utc")} />
+              </div>
+            )}
+            {/* period paging: ‹ › for week/month (0 = current) */}
+            {period !== "Day" && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginBottom: 8 }}>
+                <button onClick={() => goPeriod(-1)} title="previous" aria-label="previous period" style={{
+                  width: 22, height: 22, borderRadius: 6, cursor: "pointer", padding: 0,
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  font: `600 12px ${t.mono}`, color: t.dim,
+                  background: t.segBg, border: `1px solid ${t.segBorder}`,
+                }}>‹</button>
+                <span style={{ font: `600 11px ${t.mono}`, color: t.dim }}>{periodTitle}</span>
+                <button onClick={() => goPeriod(1)} title="next" aria-label="next period" style={{
+                  width: 22, height: 22, borderRadius: 6, cursor: "pointer", padding: 0,
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  font: `600 12px ${t.mono}`, color: t.dim,
+                  background: t.segBg, border: `1px solid ${t.segBorder}`,
+                }}>›</button>
+              </div>
+            )}
+            {/* bar chart */}
+            <BarChart data={P.series} theme={t} height={84} td={tr} />
+            <SectionRule t={t} m="14px 0 10px" />
+            {/* models / projects — tabbed */}
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
+              <Label t={t}>{costTab === "model" ? tr.tokensByModel : costTab === "project" ? tr.byProject : tr.tokensByAgent}</Label>
+              <Segmented value={costTab} items={[tr.model, tr.project, tr.byAgent]} itemValues={["model", "project", "agent"]} theme={t} onSelect={(v) => setCostTab(v as "model" | "project" | "agent")} />
             </div>
-            {P.mcp.length > 0
-              ? <BarList key={period} items={P.mcp} theme={t} accent={t.accent} td={tr} />
-              : <div style={{ font: `500 10px ${t.mono}`, color: t.faint, padding: "2px 0" }}>{tr.noMcpCalls}</div>}
-          </>
-        )}
-        {/* Skill — shown whenever the user has installed skills */}
-        {M.skills > 0 && (
-          <>
-            <SectionRule t={t} />
-            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 7 }}>
-              <Label t={t}>{tr.skillCalls}</Label>
-              <span style={{ font: `500 10px ${t.mono}`, color: t.faint, whiteSpace: "nowrap" }}><span style={{ color: t.text, fontWeight: 600 }}>{fmtInt(M.skillCalls)}</span> · {M.skills} {tr.skills}</span>
+            {/* fixed-height token rows (~6 rows): the list itself scrolls when
+                there are more models/projects/agents, and the height never
+                changes when toggling model/project/agent (no panel jump) */}
+            <div className="om-nobar" style={{ height: 168, overflowY: "auto" }}>
+              {costTab === "model" ? (
+                <>
+                  {tokenModels.length === 0 && <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
+                  {tokenModels.map((m, i) => <ModelRow key={i} m={m} max={maxM} theme={t} share={tokenShares[i]} />)}
+                </>
+              ) : costTab === "project" ? (
+                <>
+                  {projectTokens.length === 0 && <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
+                  {projectTokens.map((p, i) => <ProjectRow key={i} p={p} max={maxP} theme={t} share={projectShares[i]} />)}
+                </>
+              ) : (
+                <>
+                  {agentStats.length === 0 && <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
+                  {agentStats.map((a, i) => <AgentRow key={i} a={a} max={maxA} theme={t} share={agentShares[i]} color={agentColorOf(a)} />)}
+                </>
+              )}
+              {costTab === "model" && unpricedModels.length > 0 && (
+                <div style={{ marginTop: 9, font: `500 9.5px/1.5 ${t.mono}`, color: t.faint }}>
+                  {tr.modelsWithoutPricing(unpricedModels.length)}{" "}
+                  <span style={{ color: t.dim }}>{unpricedModels.map((m) => m.name).join(", ")}</span>
+                </div>
+              )}
             </div>
-            {P.skills.length > 0
-              ? <BarList key={period} items={P.skills} theme={t} accent={t.accent} td={tr} />
-              : <div style={{ font: `500 10px ${t.mono}`, color: t.faint, padding: "2px 0" }}>{tr.noSkillCalls}</div>}
-          </>
-        )}
-        {/* heatmap */}
-        <SectionRule t={t} />
-        <div style={{ marginBottom: 9 }}><Label t={t}>{tr.dailyActivity}</Label></div>
-        <Heatmap days={dash.heatmap} theme={t} accent={t.accent} td={tr} />
-        {/* refresh, autostart, quit */}
-        <SectionRule t={t} m="14px 0 10px" />
-        {/* footer: refresh (icon) · launch-at-login (label + switch) · quit (icon) */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <IconButton theme={t} title={tr.refresh} onClick={handleRefresh} disabled={refreshing}>
-            <svg className={refreshing ? "om-spin" : undefined} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-              <path d="M21 3v6h-6" />
-            </svg>
-          </IconButton>
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
-            <span style={{ font: `600 11px ${t.ui}`, color: t.dim }}>{tr.launchAtLogin}</span>
-            <Switch on={autostartOn} theme={t} onClick={handleAutostart} title={tr.launchAtLogin} />
+            {/* cost donut — same costTab toggle as the token rows above, so the
+                two "by model/project/agent" breakdowns stay together */}
+            <SectionRule t={t} m="8px 0 10px" />
+            <div style={{ marginBottom: 6 }}><Label t={t}>{costTab === "model" ? tr.costByModel : costTab === "project" ? tr.costByProject : tr.costByAgent}</Label></div>
+            {costTab === "model" ? (
+              costModels.length > 0
+                ? <CostDonut models={costModels} theme={t} size={100} thickness={15}
+                    currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} legendCap={6} />
+                : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
+            ) : costTab === "project" ? (
+              projectCostItems.length > 0
+                ? <CostDonut models={projectCostItems} theme={t} size={100} thickness={15}
+                    currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} legendCap={6} />
+                : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
+            ) : (
+              agentCostItems.length > 0
+                ? <CostDonut models={agentCostItems} theme={t} size={100} thickness={15}
+                    currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} preserveColors legendCap={6} />
+                : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
+            )}
           </div>
-          <IconButton theme={t} title={tr.quit} onClick={handleQuit} danger>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2v10" />
-              <path d="M6.34 5.34a8 8 0 1 0 11.32 0" />
-            </svg>
-          </IconButton>
-        </div>
-        <div style={{ marginTop: 10, textAlign: "center", font: `500 9px ${t.ui}`, color: t.faint }}>
-          OCScale v{version || "dev"} · © 2026
+          {/* ── right column ── */}
+          <div style={{ minWidth: 0 }}>
+            {/* footer stats */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <MiniStat label={tr.requests} value={fmtInt(M.requests)} sub={`${M.sessions} ${tr.sessions}`} theme={t}>
+                <Sparkline values={P.reqTrend.length ? P.reqTrend : [0, 0]} theme={t} width={52} height={20} accent={t.accent} />
+              </MiniStat>
+              <MiniStat label={tr.costTrend} value={`${tr.currencySymbol}${(M.cost * tr.exchangeRate).toFixed(2)}`} sub={trendSub} theme={t} accent={t.accent}>
+                <Sparkline values={P.costTrend.length ? P.costTrend : [0, 0]} theme={t} width={52} height={20} accent={t.accent} />
+              </MiniStat>
+            </div>
+            {/* MCP — shown whenever the user has installed MCP servers */}
+            {M.servers > 0 && (
+              <>
+                <SectionRule t={t} m="8px 0 10px" />
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 7 }}>
+                  <Label t={t}>{tr.mcpCalls}</Label>
+                  <span style={{ font: `500 10px ${t.mono}`, color: t.faint, whiteSpace: "nowrap" }}><span style={{ color: t.text, fontWeight: 600 }}>{fmtInt(M.mcpCalls)}</span> · {M.servers} {tr.servers}</span>
+                </div>
+                {P.mcp.length > 0
+                  ? <BarList key={period} items={P.mcp} theme={t} accent={t.accent} td={tr} />
+                  : <div style={{ font: `500 10px ${t.mono}`, color: t.faint, padding: "2px 0" }}>{tr.noMcpCalls}</div>}
+              </>
+            )}
+            {/* Skill — shown whenever the user has installed skills */}
+            {M.skills > 0 && (
+              <>
+                <SectionRule t={t} m="8px 0 10px" />
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 7 }}>
+                  <Label t={t}>{tr.skillCalls}</Label>
+                  <span style={{ font: `500 10px ${t.mono}`, color: t.faint, whiteSpace: "nowrap" }}><span style={{ color: t.text, fontWeight: 600 }}>{fmtInt(M.skillCalls)}</span> · {M.skills} {tr.skills}</span>
+                </div>
+                {P.skills.length > 0
+                  ? <BarList key={period} items={P.skills} theme={t} accent={t.accent} td={tr} />
+                  : <div style={{ font: `500 10px ${t.mono}`, color: t.faint, padding: "2px 0" }}>{tr.noSkillCalls}</div>}
+              </>
+            )}
+            {/* heatmap — fills the right column's full width */}
+            <SectionRule t={t} m="8px 0 10px" />
+            <div style={{ marginBottom: 7 }}><Label t={t}>{tr.dailyActivity}</Label></div>
+            <Heatmap days={dash.heatmap} theme={t} accent={t.accent} td={tr} />
+          </div>
         </div>
         </>}
         {tab === "Agents" && <AgentsTab dash={dash} theme={t} tr={tr} />}
@@ -761,28 +791,32 @@ function AgentsTab({ dash, theme, tr }: { dash: Dashboard; theme: Theme; tr: Dic
     }
   });
   return (
-    <>
-      <div style={{ marginBottom: 9 }}><Label t={theme}>{tr.tokensByAgent}</Label></div>
-      <div style={{ display: "flex", gap: 14, marginBottom: 8, font: `500 9.5px ${theme.mono}`, color: theme.dim }}>
-        <span><span style={{ color: "#10b981" }}>●</span> {tr.sourceOpenCode}</span>
-        <span><span style={{ color: "#f97316" }}>●</span> {tr.sourceCodex}</span>
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.35fr) minmax(0, 1fr)", gap: "0 18px", alignItems: "start" }}>
+      <div style={{ minWidth: 0, borderRight: `1px solid ${theme.gridLine}`, paddingRight: 18 }}>
+        <div style={{ marginBottom: 9 }}><Label t={theme}>{tr.tokensByAgent}</Label></div>
+        <div style={{ display: "flex", gap: 14, marginBottom: 8, font: `500 9.5px ${theme.mono}`, color: theme.dim }}>
+          <span><span style={{ color: "#10b981" }}>●</span> {tr.sourceOpenCode}</span>
+          <span><span style={{ color: "#f97316" }}>●</span> {tr.sourceCodex}</span>
+        </div>
+        {agents.length === 0 ? (
+          <div style={{ font: `500 10.5px ${theme.mono}`, color: theme.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>
+        ) : (
+          <div className="om-nobar" style={{ maxHeight: 224, overflowY: "auto" }}>
+            {agents.map((a, i) => <AgentRow key={i} a={a} max={max} theme={theme} share={shares[i]} color={colorOf(a)} />)}
+          </div>
+        )}
       </div>
-      {agents.length === 0 ? (
-        <div style={{ font: `500 10.5px ${theme.mono}`, color: theme.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>
-      ) : (
-        agents.map((a, i) => <AgentRow key={i} a={a} max={max} theme={theme} share={shares[i]} color={colorOf(a)} />)
-      )}
-      {costAgents.length > 0 && (
-        <>
-          <SectionRule t={theme} m="10px 0 10px" />
-          <div style={{ marginBottom: 8 }}><Label t={theme}>{tr.costByAgent}</Label></div>
-          <CostDonut models={costAgents} theme={theme} size={100} thickness={15}
-            currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate}
-            preserveColors />
-        </>
-      )}
-      <SectionRule t={theme} />
-    </>
+      <div style={{ minWidth: 0 }}>
+        {costAgents.length > 0 && (
+          <>
+            <div style={{ marginBottom: 8 }}><Label t={theme}>{tr.costByAgent}</Label></div>
+            <CostDonut models={costAgents} theme={theme} size={100} thickness={15}
+              currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate}
+              preserveColors />
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -845,7 +879,11 @@ function SessionsTab({ dash, theme, tr }: { dash: Dashboard; theme: Theme; tr: D
       {sessions.length === 0 ? (
         <div style={{ font: `500 10.5px ${theme.mono}`, color: theme.faint, padding: "4px 0" }}>{tr.noSessions}</div>
       ) : (
-        sessions.map((s, i) => <SessionRow key={i} s={s} theme={theme} tr={tr} />)
+        // Two columns of rows use the extra width; the list is height-capped so
+        // a long history scrolls inside the list, not the whole panel.
+        <div className="om-nobar" style={{ maxHeight: 430, overflowY: "auto", display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 14 }}>
+          {sessions.map((s, i) => <SessionRow key={i} s={s} theme={theme} tr={tr} />)}
+        </div>
       )}
       <SectionRule t={theme} />
     </>
