@@ -1,6 +1,6 @@
 [package]
 name = "ocscale"
-version = "0.4.2"
+version = "0.4.3"
 description = "OpenCode token usage dashboard"
 authors = ["you"]
 edition = "2021"

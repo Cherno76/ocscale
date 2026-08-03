@@ -48,6 +48,19 @@ fix. Newest first. Useful as a reference for similar issues.
   清理源码里的 TokenScope 字样，并重新生成本地 `public/dev-dashboard.json`
   （gitignored、随机器而异）。
 
+### 6. 开机自启失效：LaunchAgent 指向改名前的二进制
+
+- **Symptom**: 面板里「开机启动」开关是开的、`~/Library/LaunchAgents/OCScale.plist`
+  也存在，但登录后 app 不启动；`launchctl print gui/<uid>/OCScale` 显示
+  `program = .../MacOS/tokenscope`、`last exit code = 78: EX_CONFIG`。
+- **Cause**: tokenscope → ocscale 更名后，launchd 里仍挂着旧版注册的 Job
+  （指向已不存在的 `tokenscope` 二进制）。auto-launch 0.5 的 `enable()` 只写
+  plist 文件、从不调 `launchctl` 刷新，`is_enabled()` 又只检查文件是否存在，
+  所以 app 每次启动都认为已注册、从不重写 plist，陈旧 Job 一直留着。
+- **Fix**: 手动 `launchctl bootout gui/<uid>/OCScale` 清除旧 Job 后
+  `launchctl bootstrap` 重新加载。app 侧在 `reconcile_autostart` 增加自愈：
+  检查 plist 内容是否指向当前二进制，不一致则重新 `enable()`（重写 plist）。
+
 ---
 
 ## Early entries（更名前，仍适用）

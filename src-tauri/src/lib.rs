@@ -142,6 +142,31 @@ fn save_autostart_pref(on: bool) {
     }
 }
 
+/// The LaunchAgent plist the auto-launch plugin writes (product name "OCScale").
+#[cfg(target_os = "macos")]
+fn autostart_plist_path() -> Option<std::path::PathBuf> {
+    Some(dirs::home_dir()?.join("Library/LaunchAgents/OCScale.plist"))
+}
+
+/// True when the LaunchAgent plist still points at the currently running
+/// binary. The auto-launch plugin only writes the plist and never refreshes
+/// launchd, so after the app is renamed or moved the registration silently
+/// goes stale (job spawns with EX_CONFIG at login). Re-enabling rewrites the
+/// plist with the current exe, which heals this on the next start.
+#[cfg(target_os = "macos")]
+fn autostart_plist_matches_current_exe() -> bool {
+    let Some(path) = autostart_plist_path() else {
+        return true; // can't check → don't churn
+    };
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return false; // no plist → not registered → will be enabled below
+    };
+    let Ok(exe) = std::env::current_exe().and_then(|p| p.canonicalize()) else {
+        return true;
+    };
+    text.contains(exe.to_str().unwrap_or(""))
+}
+
 // ── Tray label mode (tokens vs balance) ────────────────────────────
 // Persisted in the data dir like the autostart preference. Defaults to the
 // token count; `set_tray_mode` re-labels the tray immediately.
@@ -196,7 +221,13 @@ fn reconcile_autostart(app: &tauri::AppHandle) -> bool {
     };
     let mgr = app.autolaunch();
     let cur = mgr.is_enabled().unwrap_or(false);
-    if pref && !cur {
+    // Re-enable when unregistered OR when the plist points at a different
+    // binary (renamed/moved app) — see autostart_plist_matches_current_exe.
+    #[cfg(target_os = "macos")]
+    let points_at_us = autostart_plist_matches_current_exe();
+    #[cfg(not(target_os = "macos"))]
+    let points_at_us = true;
+    if pref && (!cur || !points_at_us) {
         let _ = mgr.enable();
     } else if !pref && cur {
         let _ = mgr.disable();
