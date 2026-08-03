@@ -222,7 +222,14 @@ fn query_events() -> Result<Vec<RawEvent>, rusqlite::Error> {
             let data: String = row.get(2)?;
             let project_id: String = row.get(3)?;
             let project_name: String = row.get(4)?;
+            // Prefix OpenCode agents so they're distinguishable from Codex's
+            // "Codex Desktop" in the merged agent stats ("OpenCode-build").
             let agent: String = row.get(5)?;
+            let agent = if agent.is_empty() {
+                agent
+            } else {
+                format!("OpenCode-{agent}")
+            };
             let code_additions: u64 = row.get(6)?;
             let code_deletions: u64 = row.get(7)?;
             let code_files: u64 = row.get(8)?;
