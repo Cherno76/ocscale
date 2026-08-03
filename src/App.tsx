@@ -389,7 +389,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
   const goPeriod = (delta: number) => {
     const next = periodOffset + delta;
     setPeriodOffset(next);
-    invoke<PeriodReport>("get_period", { period, offset: next })
+    invoke<PeriodReport>("get_period", { period: period.toLowerCase(), offset: next })
       .then(setPagedReport)
       .catch(() => {});
   };

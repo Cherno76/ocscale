@@ -126,7 +126,7 @@ pub fn period_report(period: &str, offset: i64) -> Option<PeriodReport> {
         .map(|r| compute_event(r, &cfg, &pricing))
         .collect();
     let now = Local::now();
-    let mut report = match period {
+    let mut report = match period.to_ascii_lowercase().as_str() {
         "day" => report_day(&events, now, false),
         "week" => report_week(&events, now, offset),
         "month" => report_month(&events, now, offset),
@@ -961,5 +961,25 @@ mod tests {
         assert_eq!(cur.metrics.total_tokens, 0.0);
         let prev = report_week(&[ev.clone()], now, -1);
         assert_eq!(prev.metrics.total_tokens, 2.0);
+    }
+
+    /// Machine-specific: verifies the paging command path against real data.
+    #[test]
+    #[ignore]
+    fn real_period_report_paging() {
+        let cur = period_report("month", 0).unwrap();
+        let prev = period_report("month", -1).unwrap();
+        let cur_w = period_report("week", 0).unwrap();
+        let prev_w = period_report("week", -1).unwrap();
+        println!(
+            "month0={:.2}M month-1={:.2}M | week0={:.2}M week-1={:.2}M",
+            cur.metrics.total_tokens,
+            prev.metrics.total_tokens,
+            cur_w.metrics.total_tokens,
+            prev_w.metrics.total_tokens
+        );
+        assert!(prev.metrics.total_tokens >= 0.0);
+        assert!(prev_w.metrics.total_tokens >= 0.0);
+        assert_ne!(cur.metrics.total_tokens, prev.metrics.total_tokens);
     }
 }
