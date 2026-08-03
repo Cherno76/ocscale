@@ -93,28 +93,50 @@ pub fn build_dashboard() -> Dashboard {
 /// platform usage dashboard); week/month/heatmap stay on the local calendar.
 pub fn build_dashboard_with_mode(utc_day: bool) -> Dashboard {
     let _guard = BUILD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let events = load_merged_events();
+    build_dashboard_from_mode(&events, utc_day)
+}
 
-    // 1. OpenCode: incremental ingest, prune to the heatmap window, persist only
-    //    when something actually changed — so an idle tick doesn't rewrite the
-    //    entire cache every 30s.
+/// Load OpenCode + Codex merged RawEvents (same source as `build_dashboard`);
+/// shared with the period-paging command. Callers hold BUILD_LOCK.
+fn load_merged_events() -> Vec<RawEvent> {
+    // OpenCode: incremental ingest, prune to the heatmap window (save() is a
+    // no-op today). Reports/heatmap span ~26 weeks; 210 days leaves margin.
     let mut store = Store::load();
-    let mut dirty = store.ingest();
-    // Reports/heatmap span ~26 weeks (+ prev month); 210 days leaves margin.
+    store.ingest();
     let cutoff = (Local::now() - Duration::days(210)).timestamp_millis();
-    if store.prune_before(cutoff) {
-        dirty = true;
-    }
-    if dirty {
-        store.save();
-    }
-
-    // 2. Merge Codex transcripts (memoized by file mtime) for the combined view.
+    store.prune_before(cutoff);
+    // Merge Codex transcripts (memoized by file mtime) for the combined view.
     let mut events = store.events;
     events.extend(crate::store_codex::cached_events().iter().cloned());
     events.retain(|e| e.ts_ms >= cutoff);
     events.sort_by_key(|e| e.ts_ms);
+    events
+}
 
-    build_dashboard_from_mode(&events, utc_day)
+/// Build a single period report at `offset` weeks/months from the current one
+/// (0 = current, −1 = previous …). Used by the panel's ‹ › paging.
+pub fn period_report(period: &str, offset: i64) -> Option<PeriodReport> {
+    let _guard = BUILD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let raw = load_merged_events();
+    let cfg = UserConfig::load();
+    let pricing = Pricing::shared();
+    let events: Vec<Event> = raw
+        .iter()
+        .map(|r| compute_event(r, &cfg, &pricing))
+        .collect();
+    let now = Local::now();
+    let mut report = match period {
+        "day" => report_day(&events, now, false),
+        "week" => report_week(&events, now, offset),
+        "month" => report_month(&events, now, offset),
+        _ => return None,
+    };
+    // Match the main dashboard: "servers"/"skills" = installed counts, not the
+    // per-period called counts.
+    report.metrics.servers = cfg.mcp_servers.len() as u64;
+    report.metrics.skills = cfg.skills.len() as u64;
+    Some(report)
 }
 
 /// Shared aggregation core: turns any `RawEvent` stream (OpenCode SQLite, or the
@@ -142,8 +164,8 @@ pub fn build_dashboard_from_mode(events: &[RawEvent], utc_day: bool) -> Dashboar
     let today = now.date_naive();
 
     let mut day = report_day(&events, now, utc_day);
-    let mut week = report_week(&events, now);
-    let mut month = report_month(&events, now);
+    let mut week = report_week(&events, now, 0);
+    let mut month = report_month(&events, now, 0);
     let heatmap = build_heatmap(&events, today);
 
     // "servers"/"skills" = how many the user has *installed* (global, constant
@@ -650,10 +672,11 @@ fn report_day(events: &[Event], now: DateTime<Local>, utc_day: bool) -> PeriodRe
 }
 
 // ── Week report: current calendar week (Mon-Sun) vs previous week ────
-fn report_week(events: &[Event], now: DateTime<Local>) -> PeriodReport {
+fn report_week(events: &[Event], now: DateTime<Local>, offset: i64) -> PeriodReport {
     let today = now.date_naive();
-    // Monday of the current week (Mon=0 … Sun=6).
-    let start = today - Duration::days(today.weekday().num_days_from_monday() as i64);
+    // Monday of the target week (offset 0 = current week, −1 = previous …).
+    let cur_start = today - Duration::days(today.weekday().num_days_from_monday() as i64);
+    let start = cur_start + Duration::days(offset * 7);
     let next_start = start + Duration::days(7);
     let prev_start = start - Duration::days(7);
 
@@ -729,17 +752,23 @@ fn report_week(events: &[Event], now: DateTime<Local>) -> PeriodReport {
 }
 
 // ── Month report: current calendar month vs previous calendar month ──
-fn report_month(events: &[Event], now: DateTime<Local>) -> PeriodReport {
+/// Shift a (year, month) by `delta` months, wrapping across year boundaries
+/// (e.g. 2026-01 with −1 → 2025-12).
+fn shift_month(y: i32, m: u32, delta: i64) -> (i32, u32) {
+    let total = i64::from(y) * 12 + i64::from(m) - 1 + delta;
+    (total.div_euclid(12) as i32, (total.rem_euclid(12) + 1) as u32)
+}
+
+fn report_month(events: &[Event], now: DateTime<Local>, offset: i64) -> PeriodReport {
     use chrono::NaiveDate;
     let today = now.date_naive();
     let (y, m) = (today.year(), today.month());
-    let cur_first = NaiveDate::from_ymd_opt(y, m, 1).unwrap();
-    let next_first = if m == 12 {
-        NaiveDate::from_ymd_opt(y + 1, 1, 1).unwrap()
-    } else {
-        NaiveDate::from_ymd_opt(y, m + 1, 1).unwrap()
-    };
-    let (py, pm) = if m == 1 { (y - 1, 12) } else { (y, m - 1) };
+    // Target month = current shifted by `offset` months (handles year wraps).
+    let (ty, tm) = shift_month(y, m, offset);
+    let cur_first = NaiveDate::from_ymd_opt(ty, tm, 1).unwrap();
+    let (ny, nm) = shift_month(ty, tm, 1);
+    let next_first = NaiveDate::from_ymd_opt(ny, nm, 1).unwrap();
+    let (py, pm) = shift_month(ty, tm, -1);
     let prev_first = NaiveDate::from_ymd_opt(py, pm, 1).unwrap();
     let days_in_month = (next_first - cur_first).num_days() as usize;
 
@@ -783,7 +812,7 @@ fn report_month(events: &[Event], now: DateTime<Local>) -> PeriodReport {
             };
             SeriesPoint {
                 label,
-                full: format!("{} {}", MONTHS[(m - 1) as usize], dn),
+                full: format!("{} {}", MONTHS[(tm - 1) as usize], dn),
                 input: buckets[i].0,
                 cache: buckets[i].1,
                 output: buckets[i].2,
@@ -908,5 +937,29 @@ mod tests {
         let utc = report_day(&[ev.clone()], now, true);
         assert_eq!(utc.metrics.total_tokens, 0.0); // UTC date is Aug 2 → not today
         assert!(utc.series.iter().all(|p| p.input == 0.0));
+    }
+
+    /// A July event shows in the month report with offset −1 but not at 0.
+    #[test]
+    fn month_offset_shows_previous_month() {
+        let ev = event_at("2026-07-14T19:00:00Z", 2_000_000.0); // 2026-07-15 03:00 +08
+        let now = Local.with_ymd_and_hms(2026, 8, 3, 9, 30, 0).unwrap();
+        let cur = report_month(&[ev.clone()], now, 0);
+        assert_eq!(cur.metrics.total_tokens, 0.0);
+        let prev = report_month(&[ev.clone()], now, -1);
+        assert_eq!(prev.metrics.total_tokens, 2.0);
+        assert_eq!(prev.series.len(), 31); // July has 31 days
+    }
+
+    /// A last-week event shows in the week report with offset −1 but not at 0.
+    #[test]
+    fn week_offset_shows_previous_week() {
+        // 2026-08-03 is a Monday; previous week = 2026-07-27 … 08-02.
+        let ev = event_at("2026-07-28T03:00:00Z", 2_000_000.0); // 2026-07-28 11:00 +08
+        let now = Local.with_ymd_and_hms(2026, 8, 3, 9, 30, 0).unwrap();
+        let cur = report_week(&[ev.clone()], now, 0);
+        assert_eq!(cur.metrics.total_tokens, 0.0);
+        let prev = report_week(&[ev.clone()], now, -1);
+        assert_eq!(prev.metrics.total_tokens, 2.0);
     }
 }

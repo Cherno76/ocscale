@@ -278,6 +278,8 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
   const canDrag = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window && !navigator.userAgent.includes("Macintosh");
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const [period, setPeriod] = useState<"Day" | "Week" | "Month">("Week");
+  const [periodOffset, setPeriodOffset] = useState(0);
+  const [pagedReport, setPagedReport] = useState<PeriodReport | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [autostartOn, setAutostartOn] = useState(false);
   const [costTab, setCostTab] = useState<"model" | "project" | "agent">("model");
@@ -303,7 +305,11 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
   const handleQuit = () => {
     import("@tauri-apps/api/core").then(({ invoke }) => invoke("quit_app"));
   };
-  const P: PeriodReport = period === "Day" ? dash.day : period === "Month" ? dash.month : dash.week;
+  // Paged week/month views override the live period report (historical data is
+  // static; the current period keeps updating live from dashboard-updated).
+  const P: PeriodReport = pagedReport && period !== "Day"
+    ? pagedReport
+    : period === "Day" ? dash.day : period === "Month" ? dash.month : dash.week;
   const M = P.metrics;
   // animated Total tokens: counts up from 0 on each open / period switch;
   // held at 0 while the popover is hidden so it never flashes the final value.
@@ -369,7 +375,27 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
       });
     }
   });
-  const trendSub = { Day: tr.today24h, Week: tr.thisWeek, Month: tr.thisMonth }[period];
+  // ── period paging (week/month ‹ ›) ──────────────────────────────
+  const fmtMonthTitle = (offset: number) =>
+    new Date(new Date().getFullYear(), new Date().getMonth() + offset, 1)
+      .toLocaleDateString(undefined, { year: "numeric", month: "long" });
+  const fmtWeekTitle = (offset: number) => {
+    const d = new Date();
+    const mon = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7) + offset * 7);
+    const base = mon.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    return offset === 0 ? `${base} (${tr.thisWeek})` : base;
+  };
+  const periodTitle = period === "Month" ? fmtMonthTitle(periodOffset) : fmtWeekTitle(periodOffset);
+  const goPeriod = (delta: number) => {
+    const next = periodOffset + delta;
+    setPeriodOffset(next);
+    invoke<PeriodReport>("get_period", { period, offset: next })
+      .then(setPagedReport)
+      .catch(() => {});
+  };
+  const trendSub = pagedReport && period !== "Day"
+    ? periodTitle
+    : { Day: tr.today24h, Week: tr.thisWeek, Month: tr.thisMonth }[period];
 
   // screenshot capture: rasterize the full panel card to a PNG and hand it to
   // the Rust `save_screenshot` command (browser preview falls back to a download).
@@ -467,7 +493,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
             <div data-no-drag="" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "default" }}>
               {tab === "Overview" && (
                 <Segmented value={period} items={periodItems} itemValues={["Day","Week","Month"]} theme={t}
-                  onSelect={(v) => setPeriod(v as any)} />
+                  onSelect={(v) => { setPeriod(v as any); setPeriodOffset(0); setPagedReport(null); }} />
               )}
               <ThemeToggle pref={themePref} theme={t} td={tr} onCycle={onToggleTheme} />
               <LangToggle lang={lang} onClick={toggleLang} theme={t} />
@@ -521,6 +547,24 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
             <Segmented value={dayMode} items={[tr.dayLocal, tr.dayUtc]} itemValues={["local", "utc"]} theme={t}
               onSelect={(v) => onDayModeChange(v as "local" | "utc")} />
+          </div>
+        )}
+        {/* period paging: ‹ › for week/month (0 = current) */}
+        {period !== "Day" && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginBottom: 8 }}>
+            <button onClick={() => goPeriod(-1)} title="previous" aria-label="previous period" style={{
+              width: 22, height: 22, borderRadius: 6, cursor: "pointer", padding: 0,
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              font: `600 12px ${t.mono}`, color: t.dim,
+              background: t.segBg, border: `1px solid ${t.segBorder}`,
+            }}>‹</button>
+            <span style={{ font: `600 11px ${t.mono}`, color: t.dim }}>{periodTitle}</span>
+            <button onClick={() => goPeriod(1)} title="next" aria-label="next period" style={{
+              width: 22, height: 22, borderRadius: 6, cursor: "pointer", padding: 0,
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              font: `600 12px ${t.mono}`, color: t.dim,
+              background: t.segBg, border: `1px solid ${t.segBorder}`,
+            }}>›</button>
           </div>
         )}
         {/* bar chart */}

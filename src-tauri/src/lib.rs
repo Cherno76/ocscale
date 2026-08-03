@@ -913,6 +913,16 @@ async fn set_day_mode(app: tauri::AppHandle, mode: String) -> Result<String, Str
     Ok(day_mode_name(m))
 }
 
+/// One period report at an offset (week/month paging: 0 = current, −1 = previous).
+#[tauri::command]
+async fn get_period(period: String, offset: i64) -> Result<model::PeriodReport, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        parser::period_report(&period, offset).ok_or_else(|| format!("unknown period: {period}"))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 fn fmt_tokens_m(m: f64) -> String {
     if m >= 1.0 {
         format!("{:.2}M", m)
@@ -968,7 +978,7 @@ pub fn run() {
     }
 
     builder
-        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag, get_autostart, set_autostart, quit_app, get_version, get_balance, get_tray_mode, set_tray_mode, get_day_mode, set_day_mode])
+        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag, get_autostart, set_autostart, quit_app, get_version, get_balance, get_tray_mode, set_tray_mode, get_day_mode, set_day_mode, get_period])
         .setup(move |app| {
             // Menu-bar–only app: no Dock icon, runs in the background.
             #[cfg(target_os = "macos")]
