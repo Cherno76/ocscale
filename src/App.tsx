@@ -309,7 +309,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
       invoke("fit_panel", { height }).catch(() => {});
     }, 120);
     return () => window.clearTimeout(id);
-  }, [dash, tab, period, lang, openGen, pagedReport]);
+  }, [dash, tab, period, costTab, lang, openGen, pagedReport]);
   const handleRefresh = () => {
     if (refreshing) return;
     setRefreshing(true);
@@ -621,10 +621,9 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
               <Label t={t}>{costTab === "model" ? tr.tokensByModel : costTab === "project" ? tr.byProject : tr.tokensByAgent}</Label>
               <Segmented value={costTab} items={[tr.model, tr.project, tr.byAgent]} itemValues={["model", "project", "agent"]} theme={t} onSelect={(v) => setCostTab(v as "model" | "project" | "agent")} />
             </div>
-            {/* fixed-height token rows (~6 rows): the list itself scrolls when
-                there are more models/projects/agents, and the height never
-                changes when toggling model/project/agent (no panel jump) */}
-            <div className="om-nobar" style={{ height: 168, overflowY: "auto" }}>
+            {/* capped token rows (~6 rows): the list itself scrolls when there
+                are more models/projects/agents, keeping the panel compact */}
+            <div className="om-nobar" style={{ maxHeight: 168, overflowY: "auto" }}>
               {costTab === "model" ? (
                 <>
                   {tokenModels.length === 0 && <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
@@ -655,17 +654,17 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
             {costTab === "model" ? (
               costModels.length > 0
                 ? <CostDonut models={costModels} theme={t} size={100} thickness={15}
-                    currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} legendCap={6} />
+                    currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} />
                 : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
             ) : costTab === "project" ? (
               projectCostItems.length > 0
                 ? <CostDonut models={projectCostItems} theme={t} size={100} thickness={15}
-                    currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} legendCap={6} />
+                    currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} />
                 : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
             ) : (
               agentCostItems.length > 0
                 ? <CostDonut models={agentCostItems} theme={t} size={100} thickness={15}
-                    currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} preserveColors legendCap={6} />
+                    currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} preserveColors />
                 : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
             )}
           </div>

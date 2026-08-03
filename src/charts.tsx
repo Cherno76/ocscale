@@ -143,9 +143,9 @@ const DONUT_PALETTE = ["#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#4b5a52"];
 const DONUT_OVERFLOW = "#79817b";
 
 export function CostDonut({ models, theme, size = 104, thickness = 16, currencySymbol = "$", exchangeRate = 1,
-  preserveColors, legendCap,
+  preserveColors,
 }: { models: ModelStat[]; theme: Theme; size?: number; thickness?: number; currencySymbol?: string; exchangeRate?: number;
-  preserveColors?: boolean; legendCap?: number }) {
+  preserveColors?: boolean }) {
   const t = theme;
   const [hi, setHi] = useState(-1);
   // When preserveColors is set, keep the caller's colors as-is (e.g. agent-tab
@@ -211,19 +211,14 @@ export function CostDonut({ models, theme, size = 104, thickness = 16, currencyS
         </div>
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        {/* When legendCap is set the legend is a fixed-height strip (internal
-            scroll) so toggling the cost tab never changes the panel height. */}
-        <div className={legendCap ? "om-nobar" : undefined}
-          style={legendCap ? { height: legendCap * 19, overflowY: "auto" } : undefined}>
-          {models.map((m, i) => (
-            <div key={i} onMouseEnter={() => setHi(i)} onMouseLeave={() => setHi(-1)}
-              style={{ display: "flex", alignItems: "center", gap: 7, padding: "2.5px 0", opacity: hi === -1 || hi === i ? 1 : 0.45, transition: "opacity .14s", cursor: "default", userSelect: "none" }}>
-              <span style={{ width: 7, height: 7, borderRadius: 2, background: m.color, flex: "0 0 auto" }} />
-              <span style={{ font: `500 10.5px ${t.ui}`, color: t.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, fontWeight: hi === i ? 600 : 500 }}>{m.name.replace("Claude ", "")}</span>
-              <span style={{ font: `600 10.5px ${t.mono}`, color: hi === i ? m.color : t.dim, flex: "0 0 auto" }}>{fmtMoney(m.cost, currencySymbol, exchangeRate)}</span>
-            </div>
-          ))}
-        </div>
+        {models.map((m, i) => (
+          <div key={i} onMouseEnter={() => setHi(i)} onMouseLeave={() => setHi(-1)}
+            style={{ display: "flex", alignItems: "center", gap: 7, padding: "2.5px 0", opacity: hi === -1 || hi === i ? 1 : 0.45, transition: "opacity .14s", cursor: "default", userSelect: "none" }}>
+            <span style={{ width: 7, height: 7, borderRadius: 2, background: m.color, flex: "0 0 auto" }} />
+            <span style={{ font: `500 10.5px ${t.ui}`, color: t.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, fontWeight: hi === i ? 600 : 500 }}>{m.name.replace("Claude ", "")}</span>
+            <span style={{ font: `600 10.5px ${t.mono}`, color: hi === i ? m.color : t.dim, flex: "0 0 auto" }}>{fmtMoney(m.cost, currencySymbol, exchangeRate)}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
