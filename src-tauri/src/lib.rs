@@ -1066,6 +1066,16 @@ pub fn run() {
             // on resign-key (clicking outside / switching apps) like a popover.
             #[cfg(target_os = "macos")]
             if let Some(window) = app.get_webview_window("main") {
+                // Frosted-glass backdrop: window-vibrancy adds an
+                // NSVisualEffectView *behind* the webview (it never replaces the
+                // content view), so the panel's transparent areas show the
+                // blurred desktop like a native popover. Radius ~28 keeps the
+                // glass footprint rounded under the card's 20px corners (the
+                // card sits 10px inside the window edge).
+                use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
+                if let Err(e) = apply_vibrancy(&window, NSVisualEffectMaterial::Popover, None, Some(28.0)) {
+                    eprintln!("vibrancy unavailable: {e}");
+                }
                 use tauri_nspanel::cocoa::appkit::NSWindowCollectionBehavior;
                 // NSWindowStyleMaskNonActivatingPanel — receive events without
                 // activating (stealing focus from) the frontmost app.

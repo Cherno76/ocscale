@@ -59,6 +59,14 @@ function Delta({ v, theme }: { v: number; theme: Theme }) {
   );
 }
 
+// macOS: the panel carries a real NSVisualEffectView frosted-glass backdrop
+// (applied in Rust), so the card background is translucent to let the blur
+// show through. Elsewhere (Windows/Linux, browser preview) keep it solid.
+function panelBackground(dark: boolean, t: Theme): string {
+  const isMac = typeof navigator !== "undefined" && navigator.userAgent.includes("Macintosh");
+  return isMac ? (dark ? "rgba(31,34,38,0.84)" : "rgba(255,255,255,0.80)") : t.card;
+}
+
 // Round each value's share to 1 decimal (%) via largest-remainder apportionment,
 // so the displayed percentages sum to exactly 100.0% (plain rounding wouldn't).
 function ProjectRow({ p, max, theme, share }: { p: ProjectStat; max: number; theme: Theme; share: number }) {
@@ -286,6 +294,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
   { dash: Dashboard; dark: boolean; themePref: "dark" | "light" | "system"; onToggleTheme: () => void; openGen: number; active: boolean; lang: Lang; toggleLang: () => void; onRefresh: () => void; version: string; balance: BalanceInfo | null; trayMode: "tokens" | "balance"; onToggleTrayMode: () => void; dayMode: "local" | "utc"; onDayModeChange: (m: "local" | "utc") => void }) {
   const t = TH[dark ? "dark" : "light"];
   const { t: tr } = useT();
+  const panelBg = panelBackground(dark, t);
   const [tab, setTab] = useState<"Overview" | "Agents" | "Sessions">("Overview");
   const periodItems = [tr.day, tr.week, tr.month];
   // Drag the popover by its body (Windows/Linux only — macOS uses the menu-bar
@@ -538,7 +547,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
         onMouseUp={canDrag ? () => { dragRef.current = null; } : undefined}
         style={{
         width: "100%", height: "100%", overflowY: "auto",
-        borderRadius: t.r.xl, background: t.card,
+        borderRadius: t.r.xl, background: panelBg,
         border: `1px solid ${t.border}`, boxShadow: t.shadow,
         animation: entering ? "om-pop-in 0.22s cubic-bezier(0.22, 1, 0.36, 1)" : undefined,
         transformOrigin: "50% 0",
@@ -547,7 +556,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
         {/* sticky header — stays put while the body scrolls */}
         <div style={{
           position: "sticky", top: 0, zIndex: 10,
-          background: t.card,
+          background: panelBg,
         }}>
           <div style={{
             display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -1196,7 +1205,7 @@ export default function App() {
         ? <div style={{ padding: 20, font: `500 12px ${t.mono}`, color: t.danger }}>{tr.failedToLoad} {err}</div>
         : !dash
         ? <div style={{ height: "100vh", padding: 10, boxSizing: "border-box", background: "transparent" }}>
-            <div style={{ height: "100%", borderRadius: t.r.xl, background: t.card, border: `1px solid ${t.border}`, boxShadow: t.shadow,
+            <div style={{ height: "100%", borderRadius: t.r.xl, background: panelBackground(dark, t), border: `1px solid ${t.border}`, boxShadow: t.shadow,
               display: "flex", alignItems: "center", justifyContent: "center",
               font: `500 12px ${t.mono}`, color: t.dim }}>{tr.loading}</div>
           </div>
