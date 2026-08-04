@@ -6,6 +6,8 @@ const style = document.createElement("style");
 style.textContent = `
   html, body, #root { margin: 0; padding: 0; height: 100%; background: transparent; }
   * { box-sizing: border-box; }
+  /* Let form controls / scrollbars follow the active theme (light vs dark). */
+  :root { color-scheme: light dark; }
   .om-scroll { scrollbar-width: none; -ms-overflow-style: none; }
   .om-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
   /* Hidden scrollbars for the capped inner lists (model/agent/session rows):

@@ -49,10 +49,11 @@ function useCountUp(target: number, resetKey: string, active: boolean, duration 
 function Delta({ v, theme }: { v: number; theme: Theme }) {
   const up = v >= 0;
   // Usage/cost going up is "bad" → red; going down is "good" → green.
-  const col = up ? "#e0795f" : "#27b06e";
+  const col = up ? theme.danger : theme.success;
   return (
-    <span style={{ font: `600 10px ${theme.mono}`, color: col, display: "inline-flex", alignItems: "center", gap: 2,
-      padding: "1.5px 5px", borderRadius: 5, background: up ? "rgba(224,121,95,0.16)" : "rgba(39,176,110,0.14)" }}>
+    <span style={{ font: `600 ${theme.fs.small}px ${theme.mono}`, color: col, display: "inline-flex", alignItems: "center", gap: 3,
+      padding: "2px 6px", borderRadius: theme.r.sm,
+      background: up ? `${theme.danger}22` : `${theme.success}1f` }}>
       {up ? "▲" : "▼"}{Math.abs(Math.round(v))}%
     </span>
   );
@@ -66,16 +67,16 @@ function ProjectRow({ p, max, theme, share }: { p: ProjectStat; max: number; the
   const hash = p.projectId.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
   const color = PALETTE[hash % PALETTE.length];
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "5px 0" }}>
-      <span style={{ width: 7, height: 7, borderRadius: 2, background: color, flex: "0 0 auto" }} />
+    <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 0" }}>
+      <span style={{ width: 8, height: 8, borderRadius: 3, background: color, flex: "0 0 auto" }} />
       <div style={{ minWidth: 0, flex: "0 0 118px" }}>
-        <div style={{ font: `500 11.5px ${theme.ui}`, color: theme.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.projectName}</div>
+        <div style={{ font: `500 ${theme.fs.body}px ${theme.ui}`, color: theme.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.projectName}</div>
       </div>
-      <div style={{ flex: 1, height: 5, borderRadius: 3, background: theme.gridLine, overflow: "hidden" }}>
+      <div style={{ flex: 1, height: 6, borderRadius: 3, background: theme.gridLine, overflow: "hidden" }}>
         <div style={{ width: `${(p.tokens / max) * 100}%`, height: "100%", background: color, borderRadius: 3 }} />
       </div>
-      <span style={{ font: `500 10.5px ${theme.mono}`, color: theme.dim, flex: "0 0 auto", width: 42, textAlign: "right" }}>{fmtTokens(p.tokens)}</span>
-      <span style={{ font: `600 10.5px ${theme.mono}`, color: theme.text, flex: "0 0 auto", width: 40, textAlign: "right" }}>{pctStr}%</span>
+      <span style={{ font: `500 ${theme.fs.small}px ${theme.mono}`, color: theme.dim, flex: "0 0 auto", width: 44, textAlign: "right" }}>{fmtTokens(p.tokens)}</span>
+      <span style={{ font: `600 ${theme.fs.small}px ${theme.mono}`, color: theme.text, flex: "0 0 auto", width: 42, textAlign: "right" }}>{pctStr}%</span>
     </div>
   );
 }
@@ -98,30 +99,36 @@ function ModelRow({ m, max, theme, share }: { m: ModelStat; max: number; theme: 
   // 1-decimal share; whole numbers drop the ".0" (100% not 100.0%).
   const pctStr = share % 1 === 0 ? share.toFixed(0) : share.toFixed(1);
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "5px 0" }}>
-      <span style={{ width: 7, height: 7, borderRadius: 2, background: m.color, flex: "0 0 auto" }} />
+    <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 0" }}>
+      <span style={{ width: 8, height: 8, borderRadius: 3, background: m.color, flex: "0 0 auto" }} />
       <div style={{ minWidth: 0, flex: "0 0 118px" }}>
-        <div style={{ font: `500 11.5px ${theme.ui}`, color: theme.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.name}</div>
+        <div style={{ font: `500 ${theme.fs.body}px ${theme.ui}`, color: theme.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.name}</div>
       </div>
-      <div style={{ flex: 1, height: 5, borderRadius: 3, background: theme.gridLine, overflow: "hidden" }}>
+      <div style={{ flex: 1, height: 6, borderRadius: 3, background: theme.gridLine, overflow: "hidden" }}>
         <div style={{ width: `${(m.tokens / max) * 100}%`, height: "100%", background: m.color, borderRadius: 3 }} />
       </div>
-      <span style={{ font: `500 10.5px ${theme.mono}`, color: theme.dim, flex: "0 0 auto", width: 42, textAlign: "right" }}>{fmtTokens(m.tokens)}</span>
-      <span style={{ font: `600 10.5px ${theme.mono}`, color: theme.text, flex: "0 0 auto", width: 40, textAlign: "right" }}>{pctStr}%</span>
+      <span style={{ font: `500 ${theme.fs.small}px ${theme.mono}`, color: theme.dim, flex: "0 0 auto", width: 44, textAlign: "right" }}>{fmtTokens(m.tokens)}</span>
+      <span style={{ font: `600 ${theme.fs.small}px ${theme.mono}`, color: theme.text, flex: "0 0 auto", width: 42, textAlign: "right" }}>{pctStr}%</span>
     </div>
   );
 }
 
-function MiniStat({ label, value, sub, theme, accent, children }:
+// Elevated KPI card: label row (with optional sparkline / adornment on the
+// right) over a large mono value and a faint sub-line.
+function KpiCard({ label, value, sub, theme, accent, children }:
   { label: string; value: string; sub?: string; theme: Theme; accent?: string; children?: React.ReactNode }) {
+  const t = theme;
   return (
-    <div style={{ background: theme.gridLine, borderRadius: 9, padding: "9px 10px", minWidth: 0 }}>
-      <div style={{ font: `500 9.5px ${theme.ui}`, color: theme.dim, letterSpacing: ".04em", textTransform: "uppercase" }}>{label}</div>
-      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginTop: 3, gap: 6 }}>
-        <span style={{ font: `600 17px/1 ${theme.mono}`, color: accent || theme.text }}>{value}</span>
+    <div style={{
+      background: t.surface, border: `1px solid ${t.border}`, borderRadius: t.r.md,
+      padding: "11px 12px", minWidth: 0,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginBottom: 7 }}>
+        <span style={{ font: `600 ${t.fs.label}px ${t.ui}`, color: t.dim, letterSpacing: ".03em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
         {children}
       </div>
-      {sub && <div style={{ font: `500 9px ${theme.mono}`, color: theme.faint, marginTop: 3 }}>{sub}</div>}
+      <div style={{ font: `700 ${t.fs.value}px/1 ${t.mono}`, color: accent || t.text, letterSpacing: "-.01em" }}>{value}</div>
+      {sub && <div style={{ font: `500 ${t.fs.small}px ${t.mono}`, color: t.faint, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div>}
     </div>
   );
 }
@@ -143,7 +150,7 @@ function SplitLegend({ t, tr, cacheM, restM, cachedPct, reasoningM }:
   return (
     <div ref={ref} style={{
       display: "flex", alignItems: "center", gap: 14,
-      font: `500 10px ${t.mono}`, color: t.dim, marginBottom: 14, whiteSpace: "nowrap", overflow: "hidden",
+      font: `500 ${t.fs.small}px ${t.mono}`, color: t.dim, marginBottom: 14, whiteSpace: "nowrap", overflow: "hidden",
     }}>
       {reasoningM !== undefined && reasoningM > 0 && (
         <span><span style={{ color: t.reasoningCol }}>●</span> {tr.reasoning} {reasoningM.toFixed(2)}M</span>
@@ -159,7 +166,7 @@ const SectionRule = ({ t, m = "12px 0 10px" }: { t: Theme; m?: string }) => (
   <div style={{ height: 1, background: t.gridLine, margin: m }} />
 );
 const Label = ({ t, children }: { t: Theme; children: React.ReactNode }) => (
-  <span style={{ font: `600 10px ${t.ui}`, color: t.dim, letterSpacing: ".05em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{children}</span>
+  <span style={{ font: `600 ${t.fs.label}px ${t.ui}`, color: t.dim, letterSpacing: ".04em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{children}</span>
 );
 
 function ThemeToggle({ pref, theme, td, onCycle }: { pref: "dark" | "light" | "system"; theme: Theme; td: Dict; onCycle: () => void }) {
@@ -169,8 +176,9 @@ function ThemeToggle({ pref, theme, td, onCycle }: { pref: "dark" | "light" | "s
   return (
     <button onClick={onCycle} title={`Theme: ${label}`} aria-label={`theme: ${label}`} style={{
       display: "inline-flex", alignItems: "center", justifyContent: "center",
-      width: 26, height: 26, borderRadius: 7, cursor: "pointer", padding: 0,
+      width: 28, height: 28, borderRadius: t.r.sm, cursor: "pointer", padding: 0,
       background: t.segBg, border: `1px solid ${t.segBorder}`, color: t.dim,
+      transition: "background .15s, color .15s",
     }}>
       {pref === "light" ? (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={t.dim} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -195,9 +203,10 @@ function LangToggle({ lang, onClick, theme }: { lang: Lang; onClick: () => void;
   return (
     <button onClick={onClick} title={lang === "en" ? "中文" : "English"} aria-label="switch language" style={{
       display: "inline-flex", alignItems: "center", justifyContent: "center",
-      width: 26, height: 26, borderRadius: 7, cursor: "pointer", padding: 0,
+      width: 28, height: 28, borderRadius: theme.r.sm, cursor: "pointer", padding: 0,
       background: theme.segBg, border: `1px solid ${theme.segBorder}`, color: theme.dim,
-      font: `600 11px ${theme.mono}`, letterSpacing: ".02em",
+      font: `600 ${theme.fs.small}px ${theme.mono}`, letterSpacing: ".02em",
+      transition: "background .15s, color .15s",
     }}>
       {lang === "en" ? "中" : "EN"}
     </button>
@@ -209,13 +218,13 @@ function Switch({ on, theme, onClick, title }: { on: boolean; theme: Theme; onCl
   return (
     <button onClick={onClick} role="switch" aria-checked={on} aria-label={title} title={title}
       style={{
-        position: "relative", width: 26, height: 15, borderRadius: 8, padding: 0, cursor: "pointer", flex: "0 0 auto",
+        position: "relative", width: 28, height: 16, borderRadius: theme.r.pill, padding: 0, cursor: "pointer", flex: "0 0 auto",
         background: on ? theme.accent : theme.segBg,
         border: `1px solid ${on ? theme.accent : theme.segBorder}`,
         transition: "background .15s",
       }}>
       <span style={{
-        position: "absolute", top: 2, left: on ? 12 : 2, width: 9, height: 9, borderRadius: "50%",
+        position: "absolute", top: 2, left: on ? 13 : 2, width: 10, height: 10, borderRadius: "50%",
         background: "#fff", transition: "left .15s",
       }} />
     </button>
@@ -232,10 +241,10 @@ function IconButton({ theme, title, onClick, danger, disabled, children }:
       onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
       style={{
         display: "inline-flex", alignItems: "center", justifyContent: "center",
-        width: 28, height: 28, borderRadius: 8, padding: 0, flex: "0 0 auto",
+        width: 30, height: 30, borderRadius: t.r.sm, padding: 0, flex: "0 0 auto",
         cursor: disabled ? "default" : "pointer",
         background: h ? t.segOnBg : t.segBg, border: `1px solid ${t.segBorder}`,
-        color: danger && h ? "#e0795f" : t.dim,
+        color: danger && h ? t.danger : t.dim,
         transition: "background .15s, color .15s",
       }}>
       {children}
@@ -248,8 +257,9 @@ function ScreenshotButton({ theme, busy, onClick, td }: { theme: Theme; busy: bo
   return (
     <button onClick={onClick} disabled={busy} title={td.screenshotTitle} aria-label="save screenshot" style={{
       display: "inline-flex", alignItems: "center", justifyContent: "center",
-      width: 26, height: 26, borderRadius: 7, cursor: busy ? "default" : "pointer", padding: 0,
+      width: 28, height: 28, borderRadius: t.r.sm, cursor: busy ? "default" : "pointer", padding: 0,
       background: t.segBg, border: `1px solid ${t.segBorder}`, color: t.dim,
+      transition: "background .15s, color .15s",
     }}>
       {busy ? (
         <svg className="om-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={t.dim} strokeWidth="2.6" strokeLinecap="round">
@@ -305,7 +315,8 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
       const body = header?.nextElementSibling as HTMLElement | null;
       if (!header || !body) return;
       // card border is 1px top + 1px bottom
-      const height = Math.round(header.offsetHeight + body.offsetHeight + 2);
+      // + outer padding (10 top + 10 bottom) so the drop shadow has room to paint.
+      const height = Math.round(header.offsetHeight + body.offsetHeight + 22);
       invoke("fit_panel", { height }).catch(() => {});
     }, 120);
     return () => window.clearTimeout(id);
@@ -417,6 +428,11 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
   const trendSub = pagedReport && period !== "Day"
     ? periodTitle
     : { Day: tr.today24h, Week: tr.thisWeek, Month: tr.thisMonth }[period];
+  // Average cost per request, kept readable across magnitudes (0.0004 → ¥0.0004).
+  const avgPerReq = M.requests > 0 ? (M.cost * tr.exchangeRate) / M.requests : 0;
+  const avgPerReqStr = avgPerReq >= 0.01 ? avgPerReq.toFixed(2)
+    : avgPerReq >= 0.0001 ? avgPerReq.toFixed(4)
+    : avgPerReq.toFixed(6);
 
   // screenshot capture: rasterize the full panel card to a PNG and hand it to
   // the Rust `save_screenshot` command (browser preview falls back to a download).
@@ -470,7 +486,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
     <div style={{
       width: "100%", height: "100vh", overflow: "hidden", boxSizing: "border-box",
       position: "relative",
-      background: "transparent", padding: 0,
+      background: "transparent", padding: 10,
       fontFamily: t.ui,
     }}>
       <div className="om-scroll"
@@ -494,23 +510,23 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
         onMouseUp={canDrag ? () => { dragRef.current = null; } : undefined}
         style={{
         width: "100%", height: "100%", overflowY: "auto",
-        borderRadius: 12, background: dark ? "#1f2226" : "#ffffff",
-        border: `1px solid ${dark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.08)"}`,
+        borderRadius: t.r.xl, background: t.card,
+        border: `1px solid ${t.border}`, boxShadow: t.shadow,
         padding: 0, color: t.text, cursor: canDrag ? "grab" : undefined,
       }}>
         {/* sticky header — stays put while the body scrolls */}
         <div style={{
           position: "sticky", top: 0, zIndex: 10,
-          background: dark ? "#1f2226" : "#ffffff",
+          background: t.card,
         }}>
           <div style={{
             display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "15px 15px 10px",
+            padding: "16px 18px 12px",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <TokenGlyph color={t.accent} size={16} />
-              <span style={{ font: `600 13px ${t.ui}`, color: t.text, letterSpacing: ".01em" }}>{tr.appName}</span>
-              <span style={{ font: `500 9.5px ${t.mono}`, color: t.faint, marginLeft: 2 }}>v{version || "dev"} · © 2026</span>
+              <TokenGlyph color={t.accent} size={18} />
+              <span style={{ font: `600 14px ${t.ui}`, color: t.text, letterSpacing: ".01em" }}>{tr.appName}</span>
+              <span style={{ font: `500 10.5px ${t.mono}`, color: t.faint, marginLeft: 2 }}>v{version || "dev"} · © 2026</span>
             </div>
             <div data-no-drag="" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "default" }}>
               <Segmented value={tab} items={[tr.overview, tr.agents, tr.sessionsTab]}
@@ -525,17 +541,17 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
               login + refresh/quit pinned to the far right */}
           <div style={{
             display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "0 10px 10px",
+            padding: "0 12px 12px",
             borderBottom: `1px solid ${t.gridLine}`,
           }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 26 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 28 }}>
               {tab === "Overview" && (
                 <Segmented value={period} items={periodItems} itemValues={["Day","Week","Month"]} theme={t}
                   onSelect={(v) => { setPeriod(v as any); setPeriodOffset(0); setPagedReport(null); }} />
               )}
             </div>
             <div data-no-drag="" style={{ display: "flex", alignItems: "center", gap: 6, cursor: "default" }}>
-              <span style={{ font: `600 10.5px ${t.ui}`, color: t.dim, whiteSpace: "nowrap" }}>{tr.launchAtLogin}</span>
+              <span style={{ font: `600 ${t.fs.label}px ${t.ui}`, color: t.dim, whiteSpace: "nowrap" }}>{tr.launchAtLogin}</span>
               <Switch on={autostartOn} theme={t} onClick={handleAutostart} title={tr.launchAtLogin} />
               <div style={{ width: 8 }} />
               <IconButton theme={t} title={tr.refresh} onClick={handleRefresh} disabled={refreshing}>
@@ -557,7 +573,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
             period headline + token bars, right holds cost/stats/tools/activity.
             Inner lists are height-capped so the whole panel usually fits without
             scrolling; the outer container still scrolls as a fallback. */}
-        <div style={{ padding: "14px 15px 15px" }}>
+        <div style={{ padding: "16px 18px 18px" }}>
         {tab === "Overview" && <>
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.35fr) minmax(0, 1fr)", gap: "0 18px", alignItems: "start" }}>
           {/* ── left column ── */}
@@ -565,16 +581,16 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
             {/* hero */}
             <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 10 }}>
               <div>
-                <div style={{ font: `500 10px ${t.ui}`, color: t.dim, letterSpacing: ".04em", textTransform: "uppercase" }}>{tr.totalTokens}</div>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 3 }}>
-                  <span style={{ font: `600 30px ${t.mono}`, color: t.text, letterSpacing: "-.01em" }}>{animTotal.toFixed(2)}<span style={{ font: `500 15px ${t.mono}`, color: t.dim, marginLeft: 2 }}>M</span></span>
+                <div style={{ font: `600 ${t.fs.label}px ${t.ui}`, color: t.dim, letterSpacing: ".04em", textTransform: "uppercase" }}>{tr.totalTokens}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+                  <span style={{ font: `700 ${t.fs.hero}px/1 ${t.mono}`, color: t.text, letterSpacing: "-.02em" }}>{animTotal.toFixed(2)}<span style={{ font: `600 17px ${t.mono}`, color: t.dim, marginLeft: 3 }}>M</span></span>
                   {Math.round(M.deltaTokens) !== 0 && <Delta v={M.deltaTokens} theme={t} />}
                 </div>
               </div>
               <div style={{ textAlign: "right" }}>
-                <div style={{ font: `500 10px ${t.ui}`, color: t.dim }}>{tr.estCost}</div>
-                <div style={{ font: `600 18px ${t.mono}`, color: t.accent, marginTop: 2 }}>{tr.currencySymbol}{(M.cost * tr.exchangeRate).toFixed(2)}</div>
-                <div style={{ font: `500 9.5px ${t.mono}`, color: t.faint, marginTop: 3, display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+                <div style={{ font: `600 ${t.fs.label}px ${t.ui}`, color: t.dim }}>{tr.estCost}</div>
+                <div style={{ font: `700 22px/1 ${t.mono}`, color: t.accent, marginTop: 5 }}>{tr.currencySymbol}{(M.cost * tr.exchangeRate).toFixed(2)}</div>
+                <div style={{ font: `500 ${t.fs.small}px ${t.mono}`, color: t.faint, marginTop: 5, display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
                   {tr.balance} {balance ? fmtMoney(balance.totalBalance, balSym) : tr.costDash}
                   <Switch on={trayMode === "balance"} theme={t} onClick={onToggleTrayMode} title={tr.trayModeHint} />
                 </div>
@@ -582,7 +598,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
             </div>
             {/* cached vs rest (uncached input + output) — 2-colour pill. Dark segment
                 is the cache share, matching the "% cached" label below. */}
-            <div style={{ display: "flex", height: 7, borderRadius: 4, overflow: "hidden", marginBottom: 5, background: t.gridLine }}>
+            <div style={{ display: "flex", height: 8, borderRadius: 5, overflow: "hidden", marginBottom: 6, background: t.gridLine }}>
               {M.totalTokens > 0 && <>
                 <div style={{ width: `${cachePct}%`, background: t.accent }} />
                 <div style={{ width: `${restPct}%`, background: t.accentSoft }} />
@@ -602,14 +618,14 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
             {period !== "Day" && (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginBottom: 8 }}>
                 <button onClick={() => goPeriod(-1)} title="previous" aria-label="previous period" style={{
-                  width: 22, height: 22, borderRadius: 6, cursor: "pointer", padding: 0,
+                  width: 24, height: 24, borderRadius: t.r.sm, cursor: "pointer", padding: 0,
                   display: "inline-flex", alignItems: "center", justifyContent: "center",
                   font: `600 12px ${t.mono}`, color: t.dim,
                   background: t.segBg, border: `1px solid ${t.segBorder}`,
                 }}>‹</button>
-                <span style={{ font: `600 11px ${t.mono}`, color: t.dim }}>{periodTitle}</span>
+                <span style={{ font: `600 12px ${t.mono}`, color: t.dim }}>{periodTitle}</span>
                 <button onClick={() => goPeriod(1)} title="next" aria-label="next period" style={{
-                  width: 22, height: 22, borderRadius: 6, cursor: "pointer", padding: 0,
+                  width: 24, height: 24, borderRadius: t.r.sm, cursor: "pointer", padding: 0,
                   display: "inline-flex", alignItems: "center", justifyContent: "center",
                   font: `600 12px ${t.mono}`, color: t.dim,
                   background: t.segBg, border: `1px solid ${t.segBorder}`,
@@ -617,8 +633,8 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
               </div>
             )}
             {/* bar chart */}
-            <BarChart data={P.series} theme={t} height={84} td={tr} />
-            <SectionRule t={t} m="14px 0 10px" />
+            <BarChart data={P.series} theme={t} height={96} td={tr} />
+            <SectionRule t={t} m="16px 0 12px" />
             {/* models / projects — tabbed */}
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
               <Label t={t}>{costTab === "model" ? tr.tokensByModel : costTab === "project" ? tr.byProject : tr.tokensByAgent}</Label>
@@ -626,25 +642,25 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
             </div>
             {/* capped token rows (~6 rows): the list itself scrolls when there
                 are more models/projects/agents, keeping the panel compact */}
-            <div className="om-nobar" style={{ maxHeight: 168, overflowY: "auto" }}>
+            <div className="om-nobar" style={{ maxHeight: 180, overflowY: "auto" }}>
               {costTab === "model" ? (
                 <>
-                  {tokenModels.length === 0 && <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
+                  {tokenModels.length === 0 && <div style={{ font: `500 11.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
                   {tokenModels.map((m, i) => <ModelRow key={i} m={m} max={maxM} theme={t} share={tokenShares[i]} />)}
                 </>
               ) : costTab === "project" ? (
                 <>
-                  {projectTokens.length === 0 && <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
+                  {projectTokens.length === 0 && <div style={{ font: `500 11.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
                   {projectTokens.map((p, i) => <ProjectRow key={i} p={p} max={maxP} theme={t} share={projectShares[i]} />)}
                 </>
               ) : (
                 <>
-                  {agentStats.length === 0 && <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
+                  {agentStats.length === 0 && <div style={{ font: `500 11.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
                   {agentStats.map((a, i) => <AgentRow key={i} a={a} max={maxA} theme={t} share={agentShares[i]} color={agentColorOf(a)} />)}
                 </>
               )}
               {costTab === "model" && unpricedModels.length > 0 && (
-                <div style={{ marginTop: 9, font: `500 9.5px/1.5 ${t.mono}`, color: t.faint }}>
+                <div style={{ marginTop: 10, font: `500 10.5px/1.5 ${t.mono}`, color: t.faint }}>
                   {tr.modelsWithoutPricing(unpricedModels.length)}{" "}
                   <span style={{ color: t.dim }}>{unpricedModels.map((m) => m.name).join(", ")}</span>
                 </div>
@@ -652,64 +668,66 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
             </div>
             {/* cost donut — same costTab toggle as the token rows above, so the
                 two "by model/project/agent" breakdowns stay together */}
-            <SectionRule t={t} m="8px 0 10px" />
+            <SectionRule t={t} m="10px 0 12px" />
             <div style={{ marginBottom: 6 }}><Label t={t}>{costTab === "model" ? tr.costByModel : costTab === "project" ? tr.costByProject : tr.costByAgent}</Label></div>
             {costTab === "model" ? (
               costModels.length > 0
-                ? <CostDonut models={costModels} theme={t} size={100} thickness={15}
+                ? <CostDonut models={costModels} theme={t} size={104} thickness={16}
                     currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} />
-                : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
+                : <div style={{ font: `500 11.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
             ) : costTab === "project" ? (
               projectCostItems.length > 0
-                ? <CostDonut models={projectCostItems} theme={t} size={100} thickness={15}
+                ? <CostDonut models={projectCostItems} theme={t} size={104} thickness={16}
                     currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} />
-                : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
+                : <div style={{ font: `500 11.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
             ) : (
               agentCostItems.length > 0
-                ? <CostDonut models={agentCostItems} theme={t} size={100} thickness={15}
+                ? <CostDonut models={agentCostItems} theme={t} size={104} thickness={16}
                     currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} preserveColors />
-                : <div style={{ font: `500 10.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
+                : <div style={{ font: `500 11.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
             )}
           </div>
           {/* ── right column ── */}
           <div style={{ minWidth: 0 }}>
-            {/* footer stats */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <MiniStat label={tr.requests} value={fmtInt(M.requests)} sub={`${M.sessions} ${tr.sessions}`} theme={t}>
-                <Sparkline values={P.reqTrend.length ? P.reqTrend : [0, 0]} theme={t} width={52} height={20} accent={t.accent} />
-              </MiniStat>
-              <MiniStat label={tr.costTrend} value={`${tr.currencySymbol}${(M.cost * tr.exchangeRate).toFixed(2)}`} sub={trendSub} theme={t} accent={t.accent}>
-                <Sparkline values={P.costTrend.length ? P.costTrend : [0, 0]} theme={t} width={52} height={20} accent={t.accent} />
-              </MiniStat>
+            {/* KPI cards — 2×2 elevated grid */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <KpiCard label={tr.requests} value={fmtInt(M.requests)} sub={`${M.sessions} ${tr.sessions}`} theme={t}>
+                <Sparkline values={P.reqTrend.length ? P.reqTrend : [0, 0]} theme={t} width={54} height={22} accent={t.accent} />
+              </KpiCard>
+              <KpiCard label={tr.costTrend} value={`${tr.currencySymbol}${(M.cost * tr.exchangeRate).toFixed(2)}`} sub={trendSub} theme={t} accent={t.accent}>
+                <Sparkline values={P.costTrend.length ? P.costTrend : [0, 0]} theme={t} width={54} height={22} accent={t.accent} />
+              </KpiCard>
+              <KpiCard label={tr.cacheHit} value={`${cachePct}%`} sub={`${tr.cached} · ${fmtTokens(M.cacheTokens)}`} theme={t} accent={t.accentSoft} />
+              <KpiCard label={tr.avgPerReq} value={`${tr.currencySymbol}${avgPerReqStr}`} sub={tr.estCost} theme={t} />
             </div>
             {/* MCP — shown whenever the user has installed MCP servers */}
             {M.servers > 0 && (
               <>
-                <SectionRule t={t} m="8px 0 10px" />
+                <SectionRule t={t} m="12px 0 10px" />
                 <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 7 }}>
                   <Label t={t}>{tr.mcpCalls}</Label>
-                  <span style={{ font: `500 10px ${t.mono}`, color: t.faint, whiteSpace: "nowrap" }}><span style={{ color: t.text, fontWeight: 600 }}>{fmtInt(M.mcpCalls)}</span> · {M.servers} {tr.servers}</span>
+                  <span style={{ font: `500 ${t.fs.small}px ${t.mono}`, color: t.faint, whiteSpace: "nowrap" }}><span style={{ color: t.text, fontWeight: 600 }}>{fmtInt(M.mcpCalls)}</span> · {M.servers} {tr.servers}</span>
                 </div>
                 {P.mcp.length > 0
                   ? <BarList key={period} items={P.mcp} theme={t} accent={t.accent} td={tr} />
-                  : <div style={{ font: `500 10px ${t.mono}`, color: t.faint, padding: "2px 0" }}>{tr.noMcpCalls}</div>}
+                  : <div style={{ font: `500 ${t.fs.small}px ${t.mono}`, color: t.faint, padding: "2px 0" }}>{tr.noMcpCalls}</div>}
               </>
             )}
             {/* Skill — shown whenever the user has installed skills */}
             {M.skills > 0 && (
               <>
-                <SectionRule t={t} m="8px 0 10px" />
+                <SectionRule t={t} m="12px 0 10px" />
                 <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 7 }}>
                   <Label t={t}>{tr.skillCalls}</Label>
-                  <span style={{ font: `500 10px ${t.mono}`, color: t.faint, whiteSpace: "nowrap" }}><span style={{ color: t.text, fontWeight: 600 }}>{fmtInt(M.skillCalls)}</span> · {M.skills} {tr.skills}</span>
+                  <span style={{ font: `500 ${t.fs.small}px ${t.mono}`, color: t.faint, whiteSpace: "nowrap" }}><span style={{ color: t.text, fontWeight: 600 }}>{fmtInt(M.skillCalls)}</span> · {M.skills} {tr.skills}</span>
                 </div>
                 {P.skills.length > 0
                   ? <BarList key={period} items={P.skills} theme={t} accent={t.accent} td={tr} />
-                  : <div style={{ font: `500 10px ${t.mono}`, color: t.faint, padding: "2px 0" }}>{tr.noSkillCalls}</div>}
+                  : <div style={{ font: `500 ${t.fs.small}px ${t.mono}`, color: t.faint, padding: "2px 0" }}>{tr.noSkillCalls}</div>}
               </>
             )}
             {/* heatmap — fills the right column's full width */}
-            <SectionRule t={t} m="8px 0 10px" />
+            <SectionRule t={t} m="12px 0 10px" />
             <div style={{ marginBottom: 7 }}><Label t={t}>{tr.dailyActivity}</Label></div>
             <Heatmap days={dash.heatmap} theme={t} accent={t.accent} td={tr} />
           </div>
@@ -738,16 +756,16 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
 function AgentRow({ a, max, theme, share, color }: { a: AgentStat; max: number; theme: Theme; share: number; color: string }) {
   const pctStr = share % 1 === 0 ? share.toFixed(0) : share.toFixed(1);
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "5px 0" }}>
-      <span style={{ width: 7, height: 7, borderRadius: 2, background: color, flex: "0 0 auto" }} />
+    <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 0" }}>
+      <span style={{ width: 8, height: 8, borderRadius: 3, background: color, flex: "0 0 auto" }} />
       <div style={{ minWidth: 0, flex: "0 0 118px" }}>
-        <div style={{ font: `500 11.5px ${theme.ui}`, color: theme.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.agent}</div>
+        <div style={{ font: `500 ${theme.fs.body}px ${theme.ui}`, color: theme.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.agent}</div>
       </div>
-      <div style={{ flex: 1, height: 5, borderRadius: 3, background: theme.gridLine, overflow: "hidden" }}>
+      <div style={{ flex: 1, height: 6, borderRadius: 3, background: theme.gridLine, overflow: "hidden" }}>
         <div style={{ width: `${(a.tokens / max) * 100}%`, height: "100%", background: color, borderRadius: 3 }} />
       </div>
-      <span style={{ font: `500 10.5px ${theme.mono}`, color: theme.dim, flex: "0 0 auto", width: 42, textAlign: "right" }}>{fmtTokens(a.tokens)}</span>
-      <span style={{ font: `600 10.5px ${theme.mono}`, color: theme.text, flex: "0 0 auto", width: 40, textAlign: "right" }}>{pctStr}%</span>
+      <span style={{ font: `500 ${theme.fs.small}px ${theme.mono}`, color: theme.dim, flex: "0 0 auto", width: 44, textAlign: "right" }}>{fmtTokens(a.tokens)}</span>
+      <span style={{ font: `600 ${theme.fs.small}px ${theme.mono}`, color: theme.text, flex: "0 0 auto", width: 42, textAlign: "right" }}>{pctStr}%</span>
     </div>
   );
 }
@@ -796,14 +814,14 @@ function AgentsTab({ dash, theme, tr }: { dash: Dashboard; theme: Theme; tr: Dic
     <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.35fr) minmax(0, 1fr)", gap: "0 18px", alignItems: "start" }}>
       <div style={{ minWidth: 0, borderRight: `1px solid ${theme.gridLine}`, paddingRight: 18 }}>
         <div style={{ marginBottom: 9 }}><Label t={theme}>{tr.tokensByAgent}</Label></div>
-        <div style={{ display: "flex", gap: 14, marginBottom: 8, font: `500 9.5px ${theme.mono}`, color: theme.dim }}>
+        <div style={{ display: "flex", gap: 14, marginBottom: 8, font: `500 ${theme.fs.small}px ${theme.mono}`, color: theme.dim }}>
           <span><span style={{ color: "#10b981" }}>●</span> {tr.sourceOpenCode}</span>
           <span><span style={{ color: "#f97316" }}>●</span> {tr.sourceCodex}</span>
         </div>
         {agents.length === 0 ? (
-          <div style={{ font: `500 10.5px ${theme.mono}`, color: theme.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>
+          <div style={{ font: `500 11.5px ${theme.mono}`, color: theme.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>
         ) : (
-          <div className="om-nobar" style={{ maxHeight: 224, overflowY: "auto" }}>
+          <div className="om-nobar" style={{ maxHeight: 232, overflowY: "auto" }}>
             {agents.map((a, i) => <AgentRow key={i} a={a} max={max} theme={theme} share={shares[i]} color={colorOf(a)} />)}
           </div>
         )}
@@ -847,26 +865,26 @@ function SessionRow({ s, theme, tr }: { s: SessionInfo; theme: Theme; tr: Dict }
   const title = s.sessionTitle || "Untitled";
   return (
     <div style={{
-      display: "flex", alignItems: "center", gap: 8, padding: "7px 0",
+      display: "flex", alignItems: "center", gap: 8, padding: "8px 0",
       borderBottom: `1px solid ${theme.gridLine}`,
     }}>
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ font: `500 11.5px ${theme.ui}`, color: theme.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</div>
+        <div style={{ font: `500 ${theme.fs.body}px ${theme.ui}`, color: theme.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</div>
         <div style={{ display: "flex", gap: 6, marginTop: 2, flexWrap: "wrap" }}>
           {s.projectName && (
-            <span style={{ font: `500 9px ${theme.mono}`, color: theme.dim, background: theme.gridLine, padding: "1px 5px", borderRadius: 4 }}>{s.projectName}</span>
+            <span style={{ font: `500 10px ${theme.mono}`, color: theme.dim, background: theme.gridLine, padding: "1px 6px", borderRadius: 5 }}>{s.projectName}</span>
           )}
           {s.agent && (
-            <span style={{ font: `500 9px ${theme.mono}`, color: theme.accent, background: `${theme.accent}22`, padding: "1px 5px", borderRadius: 4 }}>{s.agent}</span>
+            <span style={{ font: `500 10px ${theme.mono}`, color: theme.accent, background: `${theme.accent}22`, padding: "1px 6px", borderRadius: 5 }}>{s.agent}</span>
           )}
-          <span style={{ font: `500 9px ${theme.mono}`, color: theme.faint }}>{fmtTimeAgo(s.timeCreated)}</span>
-          <span style={{ font: `500 9px ${theme.mono}`, color: theme.faint }}>{fmtDuration(s.durationSecs)}</span>
+          <span style={{ font: `500 10px ${theme.mono}`, color: theme.faint }}>{fmtTimeAgo(s.timeCreated)}</span>
+          <span style={{ font: `500 10px ${theme.mono}`, color: theme.faint }}>{fmtDuration(s.durationSecs)}</span>
         </div>
       </div>
       <div style={{ textAlign: "right", flex: "0 0 auto" }}>
-        <div style={{ font: `600 10.5px ${theme.mono}`, color: theme.text }}>{fmtTokens(s.tokens)}</div>
+        <div style={{ font: `600 ${theme.fs.small}px ${theme.mono}`, color: theme.text }}>{fmtTokens(s.tokens)}</div>
         {s.cost > 0 && (
-          <div style={{ font: `500 9px ${theme.mono}`, color: theme.accent }}>{tr.currencySymbol}{s.cost.toFixed(2)}</div>
+          <div style={{ font: `500 10px ${theme.mono}`, color: theme.accent }}>{tr.currencySymbol}{s.cost.toFixed(2)}</div>
         )}
       </div>
     </div>
@@ -879,11 +897,11 @@ function SessionsTab({ dash, theme, tr }: { dash: Dashboard; theme: Theme; tr: D
     <>
       <div style={{ marginBottom: 9 }}><Label t={theme}>{tr.recentSessions}</Label></div>
       {sessions.length === 0 ? (
-        <div style={{ font: `500 10.5px ${theme.mono}`, color: theme.faint, padding: "4px 0" }}>{tr.noSessions}</div>
+        <div style={{ font: `500 11.5px ${theme.mono}`, color: theme.faint, padding: "4px 0" }}>{tr.noSessions}</div>
       ) : (
         // Two columns of rows use the extra width; the list is height-capped so
         // a long history scrolls inside the list, not the whole panel.
-        <div className="om-nobar" style={{ maxHeight: 430, overflowY: "auto", display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 14 }}>
+        <div className="om-nobar" style={{ maxHeight: 440, overflowY: "auto", display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 14 }}>
           {sessions.map((s, i) => <SessionRow key={i} s={s} theme={theme} tr={tr} />)}
         </div>
       )}
@@ -1038,10 +1056,10 @@ export default function App() {
   return (
     <I18nContext.Provider value={i18nCtx}>
       {err
-        ? <div style={{ padding: 20, font: `500 12px ${t.mono}`, color: "#e0795f" }}>{tr.failedToLoad} {err}</div>
+        ? <div style={{ padding: 20, font: `500 12px ${t.mono}`, color: t.danger }}>{tr.failedToLoad} {err}</div>
         : !dash
         ? <div style={{ height: "100vh", padding: 10, boxSizing: "border-box", background: "transparent" }}>
-            <div style={{ height: "100%", borderRadius: 14, background: dark ? "#1f2226" : "#ffffff",
+            <div style={{ height: "100%", borderRadius: t.r.xl, background: t.card, border: `1px solid ${t.border}`, boxShadow: t.shadow,
               display: "flex", alignItems: "center", justifyContent: "center",
               font: `500 12px ${t.mono}`, color: t.dim }}>{tr.loading}</div>
           </div>

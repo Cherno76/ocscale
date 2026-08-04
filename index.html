@@ -10,10 +10,12 @@
     <style>
       /* Mouse-driven menu-bar popover: WKWebView draws an accent focus ring on
          whatever control gets focus when the panel opens (e.g. the theme
-         toggle). It's noise here, so suppress focus rings app-wide. */
-      *:focus,
+         toggle). Suppress the mouse-click ring only — keyboard Tab users still
+         get a visible focus indicator. */
+      *:focus { outline: none; }
       *:focus-visible {
-        outline: none !important;
+        outline: 2px solid rgba(59, 130, 246, 0.65);
+        outline-offset: 1px;
       }
       /* Spinner shown on the screenshot button while a capture is in flight. */
       @keyframes om-spin {

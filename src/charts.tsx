@@ -32,12 +32,12 @@ export function Segmented({ value, items, itemValues, theme, onSelect }:
   const t = theme;
   const vals = itemValues || items;
   return (
-    <div style={{ display: "inline-flex", padding: 2, borderRadius: 7, background: t.segBg, border: `1px solid ${t.segBorder}`, gap: 2 }}>
+    <div style={{ display: "inline-flex", padding: 3, borderRadius: t.r.sm, background: t.segBg, border: `1px solid ${t.segBorder}`, gap: 3 }}>
       {items.map((label, i) => {
         const on = vals[i] === value;
         return (
           <div key={vals[i]} onClick={() => onSelect && onSelect(vals[i])} style={{
-            font: `600 11px ${t.ui}`, letterSpacing: ".02em", padding: "3px 11px", borderRadius: 5, cursor: "pointer", userSelect: "none",
+            font: `600 12px ${t.ui}`, letterSpacing: ".01em", padding: "4px 12px", borderRadius: 6, cursor: "pointer", userSelect: "none",
             color: on ? t.segOnText : t.segOffText, background: on ? t.segOnBg : "transparent",
             boxShadow: on ? t.segOnShadow : "none", transition: "color .15s, background .15s",
           }}>{label}</div>
@@ -93,7 +93,7 @@ export function BarChart({ data, theme, height = 96, accent, accentSoft, radius 
       </div>
       <div style={{ display: "flex", gap: `${gapPct}%`, marginTop: 6 }}>
         {data.map((d, i) => (
-          <div key={i} style={{ flex: 1, textAlign: "center", font: `500 9px ${t.mono}`, color: t.dim, letterSpacing: ".03em" }}>{d.label}</div>
+          <div key={i} style={{ flex: 1, textAlign: "center", font: `500 10px ${t.mono}`, color: t.dim, letterSpacing: ".02em" }}>{d.label}</div>
         ))}
       </div>
       {hi && (
@@ -102,7 +102,7 @@ export function BarChart({ data, theme, height = 96, accent, accentSoft, radius 
           left: Math.min(Math.max(tip.x, 96), (typeof window !== "undefined" ? window.innerWidth : 372) - 96),
           top: tip.y - 8, transform: "translate(-50%,-100%)",
           background: t.tip, color: "#fff", borderRadius: 6, padding: "5px 8px",
-          font: `500 10px ${t.mono}`, whiteSpace: "nowrap", pointerEvents: "none", zIndex: 9999,
+          font: `500 10.5px ${t.mono}`, whiteSpace: "nowrap", pointerEvents: "none", zIndex: 9999,
           boxShadow: "0 4px 14px rgba(0,0,0,0.35)" }}>
           <span style={{ color: accent, fontWeight: 600 }}>
             {(() => { const tot = hi.input + hi.cache + hi.output + hi.reasoning; return tot === 0 ? loc.noTokens : loc.tokensLabel(fmtTokens(tot)); })()}
@@ -181,7 +181,7 @@ export function CostDonut({ models, theme, size = 104, thickness = 16, currencyS
   const amount = cur ? cur.cost : total;
   const txt = fmtMoney(amount, currencySymbol, exchangeRate);
   const avail = (size - 2 - thickness * 2) * 0.98;
-  const base = cur ? 15 : 17;
+  const base = cur ? 16 : 18;
   const fit = Math.min(base, Math.max(10, avail / (txt.length * 0.62)));
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -213,10 +213,10 @@ export function CostDonut({ models, theme, size = 104, thickness = 16, currencyS
       <div style={{ flex: 1, minWidth: 0 }}>
         {models.map((m, i) => (
           <div key={i} onMouseEnter={() => setHi(i)} onMouseLeave={() => setHi(-1)}
-            style={{ display: "flex", alignItems: "center", gap: 7, padding: "2.5px 0", opacity: hi === -1 || hi === i ? 1 : 0.45, transition: "opacity .14s", cursor: "default", userSelect: "none" }}>
-            <span style={{ width: 7, height: 7, borderRadius: 2, background: m.color, flex: "0 0 auto" }} />
-            <span style={{ font: `500 10.5px ${t.ui}`, color: t.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, fontWeight: hi === i ? 600 : 500 }}>{m.name.replace("Claude ", "")}</span>
-            <span style={{ font: `600 10.5px ${t.mono}`, color: hi === i ? m.color : t.dim, flex: "0 0 auto" }}>{fmtMoney(m.cost, currencySymbol, exchangeRate)}</span>
+            style={{ display: "flex", alignItems: "center", gap: 7, padding: "3.5px 0", opacity: hi === -1 || hi === i ? 1 : 0.45, transition: "opacity .14s", cursor: "default", userSelect: "none" }}>
+            <span style={{ width: 8, height: 8, borderRadius: 3, background: m.color, flex: "0 0 auto" }} />
+            <span style={{ font: `500 11.5px ${t.ui}`, color: t.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, fontWeight: hi === i ? 600 : 500 }}>{m.name.replace("Claude ", "")}</span>
+            <span style={{ font: `600 11.5px ${t.mono}`, color: hi === i ? m.color : t.dim, flex: "0 0 auto" }}>{fmtMoney(m.cost, currencySymbol, exchangeRate)}</span>
           </div>
         ))}
       </div>
@@ -242,22 +242,22 @@ export function BarList({ items, theme, accent, limit = 5, td }:
         // name flush-left (width 134 keeps the bar start aligned with ModelRow's
         // bar at x=143); the bar then runs all the way to a far-right count, whose
         // right edge lines up with the model rows' trailing value.
-        <div key={i} style={{ display: "flex", alignItems: "center", gap: 9, padding: "3px 0" }}>
-          <span style={{ font: `500 10.5px ${t.mono}`, color: t.text, flex: "0 0 134px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.name}</span>
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 9, padding: "4px 0" }}>
+          <span style={{ font: `500 11.5px ${t.mono}`, color: t.text, flex: "0 0 134px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.name}</span>
           <div style={{ flex: 1, height: 5, borderRadius: 3, background: t.gridLine, overflow: "hidden" }}>
             <div style={{ width: `${(it.count / max) * 100}%`, height: "100%", background: accent, borderRadius: 3 }} />
           </div>
-          <span style={{ font: `600 10.5px ${t.mono}`, color: t.dim, flex: "0 0 auto", minWidth: 30, textAlign: "right" }}>{fmtInt(it.count)}</span>
+          <span style={{ font: `600 11.5px ${t.mono}`, color: t.dim, flex: "0 0 auto", minWidth: 32, textAlign: "right" }}>{fmtInt(it.count)}</span>
         </div>
       ))}
       {more > 0 && (
-        <div onClick={() => setOpen(true)} style={{ font: `500 9.5px ${t.ui}`, color: t.faint, paddingTop: 4, cursor: "pointer", userSelect: "none" }}
+        <div onClick={() => setOpen(true)} style={{ font: `500 10.5px ${t.ui}`, color: t.faint, paddingTop: 4, cursor: "pointer", userSelect: "none" }}
           onMouseEnter={(e) => (e.currentTarget.style.color = t.dim)} onMouseLeave={(e) => (e.currentTarget.style.color = t.faint)}>
           {loc.nMore(more)}
         </div>
       )}
       {open && items.length > limit && (
-        <div onClick={() => setOpen(false)} style={{ font: `500 9.5px ${t.ui}`, color: t.faint, paddingTop: 4, cursor: "pointer", userSelect: "none" }}
+        <div onClick={() => setOpen(false)} style={{ font: `500 10.5px ${t.ui}`, color: t.faint, paddingTop: 4, cursor: "pointer", userSelect: "none" }}
           onMouseEnter={(e) => (e.currentTarget.style.color = t.dim)} onMouseLeave={(e) => (e.currentTarget.style.color = t.faint)}>
           {loc.showLess}
         </div>
@@ -277,23 +277,23 @@ export function ProjectBarList({ items, theme, accent, limit = 5, td }:
   return (
     <div>
       {shown.map((it, i) => (
-        <div key={i} style={{ display: "flex", alignItems: "center", gap: 9, padding: "3px 0" }}>
-          <span style={{ font: `500 10.5px ${t.mono}`, color: t.text, flex: "0 0 134px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.projectName}</span>
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 9, padding: "4px 0" }}>
+          <span style={{ font: `500 11.5px ${t.mono}`, color: t.text, flex: "0 0 134px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.projectName}</span>
           <div style={{ flex: 1, height: 5, borderRadius: 3, background: t.gridLine, overflow: "hidden" }}>
             <div style={{ width: `${(it.tokens / max) * 100}%`, height: "100%", background: accent, borderRadius: 3 }} />
           </div>
-          <span style={{ font: `600 10.5px ${t.mono}`, color: t.dim, flex: "0 0 auto", minWidth: 30, textAlign: "right" }}>{fmtTokens(it.tokens)}</span>
-          <span style={{ font: `500 8.5px ${t.ui}`, color: t.faint, background: t.gridLine, borderRadius: 4, padding: "1px 5px", lineHeight: "16px", whiteSpace: "nowrap" }}>{loc.sessionsCount(it.sessions)}</span>
+          <span style={{ font: `600 11.5px ${t.mono}`, color: t.dim, flex: "0 0 auto", minWidth: 32, textAlign: "right" }}>{fmtTokens(it.tokens)}</span>
+          <span style={{ font: `500 9.5px ${t.ui}`, color: t.faint, background: t.gridLine, borderRadius: 5, padding: "1px 6px", lineHeight: "16px", whiteSpace: "nowrap" }}>{loc.sessionsCount(it.sessions)}</span>
         </div>
       ))}
       {more > 0 && (
-        <div onClick={() => setOpen(true)} style={{ font: `500 9.5px ${t.ui}`, color: t.faint, paddingTop: 4, cursor: "pointer", userSelect: "none" }}
+        <div onClick={() => setOpen(true)} style={{ font: `500 10.5px ${t.ui}`, color: t.faint, paddingTop: 4, cursor: "pointer", userSelect: "none" }}
           onMouseEnter={(e) => (e.currentTarget.style.color = t.dim)} onMouseLeave={(e) => (e.currentTarget.style.color = t.faint)}>
           {loc.nMore(more)}
         </div>
       )}
       {open && items.length > limit && (
-        <div onClick={() => setOpen(false)} style={{ font: `500 9.5px ${t.ui}`, color: t.faint, paddingTop: 4, cursor: "pointer", userSelect: "none" }}
+        <div onClick={() => setOpen(false)} style={{ font: `500 10.5px ${t.ui}`, color: t.faint, paddingTop: 4, cursor: "pointer", userSelect: "none" }}
           onMouseEnter={(e) => (e.currentTarget.style.color = t.dim)} onMouseLeave={(e) => (e.currentTarget.style.color = t.faint)}>
           {loc.showLess}
         </div>
@@ -355,7 +355,7 @@ export function Heatmap({ days, theme, accent, gap = 2, td }:
     <div ref={wrapRef} style={{ position: "relative" }}>
       <div style={{ position: "relative", height: 12, marginBottom: 3 }}>
         {monthLabels.map((ml, i) => (
-          <span key={i} style={{ position: "absolute", left: `${ml.frac * 100}%`, font: `500 8.5px ${t.mono}`, color: t.faint }}>{MN[ml.m]}</span>
+          <span key={i} style={{ position: "absolute", left: `${ml.frac * 100}%`, font: `500 9.5px ${t.mono}`, color: t.faint }}>{MN[ml.m]}</span>
         ))}
       </div>
       <div style={{ display: "flex", gap, width: "100%" }}>
@@ -365,15 +365,15 @@ export function Heatmap({ days, theme, accent, gap = 2, td }:
               <div key={di}
                 onMouseEnter={d ? (e) => onCell(d, e) : undefined}
                 onMouseLeave={() => setHi(null)}
-                style={{ width: "100%", aspectRatio: "1 / 1", borderRadius: 2,
+                style={{ width: "100%", aspectRatio: "1 / 1", borderRadius: 3,
                   background: d ? ramp(accent!, d.level, t.gridLine, t.card) : "transparent" }} />
             ))}
           </div>
         ))}
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 5, justifyContent: "flex-end", marginTop: 8, font: `500 8.5px ${t.mono}`, color: t.faint }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 5, justifyContent: "flex-end", marginTop: 9, font: `500 9.5px ${t.mono}`, color: t.faint }}>
         <span>{loc.less}</span>
-        {[0, 1, 2, 3, 4].map((l) => (<span key={l} style={{ width: 9, height: 9, borderRadius: 2, background: ramp(accent!, l, t.gridLine, t.card) }} />))}
+        {[0, 1, 2, 3, 4].map((l) => (<span key={l} style={{ width: 10, height: 10, borderRadius: 3, background: ramp(accent!, l, t.gridLine, t.card) }} />))}
         <span>{loc.more}</span>
       </div>
       {hi && (
@@ -382,7 +382,7 @@ export function Heatmap({ days, theme, accent, gap = 2, td }:
           left: Math.min(Math.max(tip.x, 96), (typeof window !== "undefined" ? window.innerWidth : 372) - 96),
           top: tip.y - 8, transform: "translate(-50%,-100%)",
           background: t.tip, color: "#fff", borderRadius: 6, padding: "5px 8px",
-          font: `500 10px ${t.mono}`, whiteSpace: "nowrap", pointerEvents: "none", zIndex: 9999,
+          font: `500 10.5px ${t.mono}`, whiteSpace: "nowrap", pointerEvents: "none", zIndex: 9999,
           boxShadow: "0 4px 14px rgba(0,0,0,0.35)" }}>
           <span style={{ color: accent, fontWeight: 600 }}>{hi.tokens === 0 ? loc.noCalls : loc.tokensLabel(fmtTokens(hi.tokens))}</span>
           <span style={{ opacity: 0.7 }}> · {fmtHeatDate(hi.date)}</span>
