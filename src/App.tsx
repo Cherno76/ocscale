@@ -270,12 +270,12 @@ function IconButton({ theme, title, onClick, danger, disabled, active, children 
 }
 
 /// Row inside the overflow (⋯) menu: icon + label, optional right adornment.
-function MenuItem({ theme, onClick, danger, disabled, children, right }:
-  { theme: Theme; onClick: () => void; danger?: boolean; disabled?: boolean; children: React.ReactNode; right?: React.ReactNode }) {
+function MenuItem({ theme, onClick, danger, disabled, ariaLabel, children, right }:
+  { theme: Theme; onClick: () => void; danger?: boolean; disabled?: boolean; ariaLabel?: string; children: React.ReactNode; right?: React.ReactNode }) {
   const [h, setH] = useState(false);
   const t = theme;
   return (
-    <button onClick={onClick} disabled={disabled}
+    <button onClick={onClick} disabled={disabled} aria-label={ariaLabel}
       onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
       style={{
         display: "flex", width: "100%", alignItems: "center", gap: 9,
@@ -484,19 +484,27 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
   };
   const captureScreenshot = async () => {
     if (shotBusy) return;
+    // Close the ⋯ overflow menu first — an open dropdown would otherwise be
+    // baked into the saved PNG, covering the content beneath it. Wait a couple
+    // of frames for React to commit the removal before rasterizing.
+    if (menuOpen) {
+      setMenuOpen(false);
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    }
     const el = document.querySelector<HTMLElement>(".om-scroll");
     if (!el) return;
     setShotBusy(true);
     try {
       // explicit width/height = full scrollable content, not just the viewport;
-      // filter drops the capture button itself (and its in-flight spinner) so
-      // the saved image is a clean dashboard, not a shot of the button.
+      // filter is a safety net (menu is already closed above): drop the
+      // screenshot menu item if it is still in the DOM mid-render.
       const dataUrl = await domToPng(el, {
         scale: 2,
         backgroundColor: dark ? "#1f2226" : "#ffffff",
         width: el.scrollWidth,
         height: el.scrollHeight,
-        filter: (n) => !(n instanceof HTMLElement && n.getAttribute("aria-label") === "save screenshot"),
+        filter: (n) => !(n instanceof HTMLElement && n.getAttribute("aria-label") === tr.screenshotTitle),
       });
       const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
       if (inTauri) {
@@ -630,7 +638,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
                       background: t.surface, border: `1px solid ${t.border}`, borderRadius: t.r.md,
                       boxShadow: t.shadow, padding: 4,
                     }}>
-                      <MenuItem theme={t} onClick={captureScreenshot} disabled={shotBusy}
+                      <MenuItem theme={t} onClick={captureScreenshot} disabled={shotBusy} ariaLabel={tr.screenshotTitle}
                         right={shotBusy ? <svg className="om-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={t.dim} strokeWidth="2.6" strokeLinecap="round"><path d="M12 3a9 9 0 1 0 9 9" /></svg> : undefined}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.7l1.1-1.6A1.5 1.5 0 0 1 9.5 4h5a1.5 1.5 0 0 1 1.2.4L16.8 6h1.7A2.5 2.5 0 0 1 21 8.5v8A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z" />
