@@ -23,6 +23,7 @@ style.textContent = `
      set on the panel root by the active theme). */
   .om-iconbtn { transition: background .15s, color .15s; }
   .om-iconbtn:hover { background: var(--om-hover); }
+  .om-search::placeholder { color: var(--om-faint); }
   /* Respect the OS "reduce motion" setting app-wide. */
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {

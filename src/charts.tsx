@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import {
   Theme, ModelStat, NamedCount, SeriesPoint, HeatDay, ProjectStat,
   fmtInt, fmtMoney, fmtTokens, linePath, fmtHeatDate,
@@ -28,9 +28,11 @@ export function TokenGlyph({ color = "#3b82f6", size = 14 }: { color?: string; s
 }
 
 export function Segmented({ value, items, itemValues, theme, onSelect }:
-  { value: string; items: string[]; itemValues?: string[]; theme: Theme; onSelect?: (v: string) => void }) {
+  { value: string; items: ReactNode[]; itemValues?: string[]; theme: Theme; onSelect?: (v: string) => void }) {
   const t = theme;
-  const vals = itemValues || items;
+  // Values drive keys and callbacks, so they must be strings (fall back to
+  // positional indices when only display nodes were passed).
+  const vals: string[] = itemValues || items.map((_, i) => String(i));
   return (
     <div style={{ display: "inline-flex", padding: 3, borderRadius: t.r.sm, background: t.segBg, border: `1px solid ${t.segBorder}`, gap: 3 }}>
       {items.map((label, i) => {

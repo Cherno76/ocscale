@@ -168,6 +168,15 @@ const SectionRule = ({ t, m = "12px 0 10px" }: { t: Theme; m?: string }) => (
 const Label = ({ t, children }: { t: Theme; children: React.ReactNode }) => (
   <span style={{ font: `600 ${t.fs.label}px ${t.ui}`, color: t.dim, letterSpacing: ".04em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{children}</span>
 );
+// Tab pill label: small icon + text, inline in the Segmented control.
+function TabItem({ icon, label, t }: { icon: React.ReactNode; label: string; t: Theme }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, verticalAlign: "middle" }}>
+      {icon}
+      <span>{label}</span>
+    </span>
+  );
+}
 
 function ThemeToggle({ pref, theme, td, onCycle }: { pref: "dark" | "light" | "system"; theme: Theme; td: Dict; onCycle: () => void }) {
   const t = theme;
@@ -232,8 +241,8 @@ function Switch({ on, theme, onClick, title }: { on: boolean; theme: Theme; onCl
 }
 
 /// Compact square icon button with hover feedback (danger tint for quit).
-function IconButton({ theme, title, onClick, danger, disabled, children }:
-  { theme: Theme; title: string; onClick: () => void; danger?: boolean; disabled?: boolean; children: React.ReactNode }) {
+function IconButton({ theme, title, onClick, danger, disabled, active, children }:
+  { theme: Theme; title: string; onClick: () => void; danger?: boolean; disabled?: boolean; active?: boolean; children: React.ReactNode }) {
   const [h, setH] = useState(false);
   const t = theme;
   return (
@@ -243,7 +252,7 @@ function IconButton({ theme, title, onClick, danger, disabled, children }:
         display: "inline-flex", alignItems: "center", justifyContent: "center",
         width: 30, height: 30, borderRadius: t.r.sm, padding: 0, flex: "0 0 auto",
         cursor: disabled ? "default" : "pointer",
-        background: h ? t.segOnBg : t.segBg, border: `1px solid ${t.segBorder}`,
+        background: h || active ? t.segOnBg : t.segBg, border: `1px solid ${t.segBorder}`,
         color: danger && h ? t.danger : t.dim,
         transition: "background .15s, color .15s",
       }}>
@@ -252,25 +261,23 @@ function IconButton({ theme, title, onClick, danger, disabled, children }:
   );
 }
 
-function ScreenshotButton({ theme, busy, onClick, td }: { theme: Theme; busy: boolean; onClick: () => void; td: Dict }) {
+/// Row inside the overflow (⋯) menu: icon + label, optional right adornment.
+function MenuItem({ theme, onClick, danger, disabled, children, right }:
+  { theme: Theme; onClick: () => void; danger?: boolean; disabled?: boolean; children: React.ReactNode; right?: React.ReactNode }) {
+  const [h, setH] = useState(false);
   const t = theme;
   return (
-    <button onClick={onClick} disabled={busy} title={td.screenshotTitle} aria-label="save screenshot" style={{
-      display: "inline-flex", alignItems: "center", justifyContent: "center",
-      width: 28, height: 28, borderRadius: t.r.sm, cursor: busy ? "default" : "pointer", padding: 0,
-      background: t.segBg, border: `1px solid ${t.segBorder}`, color: t.dim,
-      transition: "background .15s, color .15s",
-    }}>
-      {busy ? (
-        <svg className="om-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={t.dim} strokeWidth="2.6" strokeLinecap="round">
-          <path d="M12 3a9 9 0 1 0 9 9" />
-        </svg>
-      ) : (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={t.dim} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.7l1.1-1.6A1.5 1.5 0 0 1 9.5 4h5a1.5 1.5 0 0 1 1.2.4L16.8 6h1.7A2.5 2.5 0 0 1 21 8.5v8A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z" />
-          <circle cx="12" cy="12.2" r="3.4" />
-        </svg>
-      )}
+    <button onClick={onClick} disabled={disabled}
+      onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
+      style={{
+        display: "flex", width: "100%", alignItems: "center", gap: 9,
+        padding: "6px 9px", border: "none", background: h ? t.surfaceAlt : "transparent",
+        borderRadius: t.r.sm, cursor: disabled ? "default" : "pointer",
+        font: `500 11.5px ${t.ui}`, color: danger ? t.danger : t.text, textAlign: "left",
+        transition: "background .12s, color .12s",
+      }}>
+      {children}
+      {right && <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center" }}>{right}</span>}
     </button>
   );
 }
@@ -303,6 +310,16 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
     const id = window.setTimeout(() => setEntering(false), 280);
     return () => window.clearTimeout(id);
   }, [active]);
+  const [menuOpen, setMenuOpen] = useState(false);
+  // The popover hides on blur — drop any open menu so the next open is clean.
+  useEffect(() => { if (!active) setMenuOpen(false); }, [active]);
+  // Close the overflow menu on Escape.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMenuOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
   useEffect(() => {
     // Read initial autostart state from the Rust backend.
     if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
@@ -498,7 +515,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
       position: "relative",
       background: "transparent", padding: 10,
       fontFamily: t.ui,
-      ...({ "--om-hover": t.surfaceAlt } as CSSProperties),
+      ...({ "--om-hover": t.surfaceAlt, "--om-faint": t.faint } as CSSProperties),
     }}>
       <div className="om-scroll"
         onMouseDown={canDrag ? (e) => {
@@ -542,12 +559,29 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
               <span style={{ font: `500 10.5px ${t.mono}`, color: t.faint, marginLeft: 2 }}>v{version || "dev"} · © 2026</span>
             </div>
             <div data-no-drag="" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "default" }}>
-              <Segmented value={tab} items={[tr.overview, tr.agents, tr.sessionsTab]}
-                itemValues={["Overview","Agents","Sessions"]} theme={t}
-                onSelect={(v) => setTab(v as any)} />
+              <Segmented value={tab} itemValues={["Overview","Agents","Sessions"]} theme={t}
+                onSelect={(v) => setTab(v as any)}
+                items={[
+                  <TabItem key="ov" t={t} icon={
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                      <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                      <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                    </svg>} label={tr.overview} />,
+                  <TabItem key="ag" t={t} icon={
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="8" r="4" />
+                      <path d="M4 21c1.6-3.7 4.6-5.4 8-5.4s6.4 1.7 8 5.4" />
+                    </svg>} label={tr.agents} />,
+                  <TabItem key="se" t={t} icon={
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M12 7v5l3.2 2" />
+                    </svg>} label={tr.sessionsTab} />,
+                ]} />
               <ThemeToggle pref={themePref} theme={t} td={tr} onCycle={onToggleTheme} />
               <LangToggle lang={lang} onClick={toggleLang} theme={t} />
-              <ScreenshotButton theme={t} busy={shotBusy} onClick={captureScreenshot} td={tr} />
             </div>
           </div>
           {/* period row: day/week/month on the left (Overview only), launch-at-
@@ -564,21 +598,65 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
               )}
             </div>
             <div data-no-drag="" style={{ display: "flex", alignItems: "center", gap: 6, cursor: "default" }}>
-              <span style={{ font: `600 ${t.fs.label}px ${t.ui}`, color: t.dim, whiteSpace: "nowrap" }}>{tr.launchAtLogin}</span>
-              <Switch on={autostartOn} theme={t} onClick={handleAutostart} title={tr.launchAtLogin} />
-              <div style={{ width: 8 }} />
               <IconButton theme={t} title={tr.refresh} onClick={handleRefresh} disabled={refreshing}>
                 <svg className={refreshing ? "om-spin" : undefined} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 12a9 9 0 1 1-2.64-6.36" />
                   <path d="M21 3v6h-6" />
                 </svg>
               </IconButton>
-              <IconButton theme={t} title={tr.quit} onClick={handleQuit} danger>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 2v10" />
-                  <path d="M6.34 5.34a8 8 0 1 0 11.32 0" />
-                </svg>
-              </IconButton>
+              <div style={{ position: "relative" }}>
+                <IconButton theme={t} title={tr.moreActions} onClick={() => setMenuOpen((o) => !o)} active={menuOpen} aria-expanded={menuOpen}>
+                  <svg width="14" height="14" viewBox="0 0 24 24">
+                    <circle cx="5" cy="12" r="1.5" fill="currentColor" />
+                    <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+                    <circle cx="19" cy="12" r="1.5" fill="currentColor" />
+                  </svg>
+                </IconButton>
+                {menuOpen && (
+                  <>
+                    {/* click-away layer: below the menu, above everything else */}
+                    <div style={{ position: "fixed", inset: 0, zIndex: 9 }} onClick={() => setMenuOpen(false)} />
+                    <div style={{
+                      position: "absolute", right: 0, top: "calc(100% + 6px)", zIndex: 11, width: 184,
+                      background: t.surface, border: `1px solid ${t.border}`, borderRadius: t.r.md,
+                      boxShadow: t.shadow, padding: 4,
+                    }}>
+                      <MenuItem theme={t} onClick={captureScreenshot} disabled={shotBusy}
+                        right={shotBusy ? <svg className="om-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={t.dim} strokeWidth="2.6" strokeLinecap="round"><path d="M12 3a9 9 0 1 0 9 9" /></svg> : undefined}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.7l1.1-1.6A1.5 1.5 0 0 1 9.5 4h5a1.5 1.5 0 0 1 1.2.4L16.8 6h1.7A2.5 2.5 0 0 1 21 8.5v8A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z" />
+                          <circle cx="12" cy="12.2" r="3.4" />
+                        </svg>
+                        {tr.screenshotTitle}
+                      </MenuItem>
+                      <MenuItem theme={t} onClick={handleAutostart}
+                        right={
+                          <span style={{
+                            position: "relative", width: 26, height: 15, borderRadius: 999, flex: "0 0 auto",
+                            background: autostartOn ? t.accent : t.segBg,
+                            border: `1px solid ${autostartOn ? t.accent : t.segBorder}`,
+                          }}>
+                            <span style={{ position: "absolute", top: 2, left: autostartOn ? 13 : 2, width: 9, height: 9, borderRadius: "50%", background: "#fff" }} />
+                          </span>
+                        }>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M7 17L17 7" />
+                          <path d="M9 7h8v8" />
+                        </svg>
+                        {tr.launchAtLogin}
+                      </MenuItem>
+                      <div style={{ height: 1, background: t.gridLine, margin: "3px 4px" }} />
+                      <MenuItem theme={t} onClick={handleQuit} danger>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 2v10" />
+                          <path d="M6.34 5.34a8 8 0 1 0 11.32 0" />
+                        </svg>
+                        {tr.quit}
+                      </MenuItem>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -914,16 +992,54 @@ function SessionRow({ s, theme, tr }: { s: SessionInfo; theme: Theme; tr: Dict }
 
 function SessionsTab({ dash, theme, tr }: { dash: Dashboard; theme: Theme; tr: Dict }) {
   const sessions = dash.recentSessions || [];
+  const [q, setQ] = useState("");
+  const [sort, setSort] = useState<"time" | "tokens">("time");
+  const query = q.trim().toLowerCase();
+  const filtered = sessions.filter((s) =>
+    !query || `${s.sessionTitle} ${s.projectName} ${s.agent}`.toLowerCase().includes(query)
+  );
+  const shown = [...filtered].sort((a, b) =>
+    sort === "tokens" ? b.tokens - a.tokens : b.timeCreated.localeCompare(a.timeCreated)
+  );
   return (
     <>
       <div style={{ marginBottom: 9 }}><Label t={theme}>{tr.recentSessions}</Label></div>
-      {sessions.length === 0 ? (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={theme.dim} strokeWidth="2" strokeLinecap="round"
+            style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+            <circle cx="11" cy="11" r="7" />
+            <path d="M21 21l-4.3-4.3" />
+          </svg>
+          <input className="om-search" value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder={tr.searchSessions} aria-label={tr.searchSessions}
+            style={{
+              width: "100%", background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: theme.r.sm,
+              padding: "6px 26px 6px 26px", font: `500 11.5px ${theme.ui}`, color: theme.text, outline: "none",
+            }} />
+          {q && (
+            <button onClick={() => setQ("")} title={tr.clearSearch} aria-label={tr.clearSearch}
+              style={{
+                position: "absolute", right: 5, top: "50%", transform: "translateY(-50%)",
+                width: 18, height: 18, borderRadius: 5, border: "none", background: "transparent", cursor: "pointer",
+                color: theme.dim, display: "inline-flex", alignItems: "center", justifyContent: "center",
+              }}>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+        <Segmented value={sort} items={[tr.sortRecent, tr.sortTokens]} itemValues={["time", "tokens"]} theme={theme}
+          onSelect={(v) => setSort(v as "time" | "tokens")} />
+      </div>
+      {shown.length === 0 ? (
         <div style={{ font: `500 11.5px ${theme.mono}`, color: theme.faint, padding: "4px 0" }}>{tr.noSessions}</div>
       ) : (
         // Two columns of rows use the extra width; the list is height-capped so
         // a long history scrolls inside the list, not the whole panel.
         <div className="om-nobar" style={{ maxHeight: 440, overflowY: "auto", display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 14 }}>
-          {sessions.map((s, i) => <SessionRow key={i} s={s} theme={theme} tr={tr} />)}
+          {shown.map((s, i) => <SessionRow key={i} s={s} theme={theme} tr={tr} />)}
         </div>
       )}
       <SectionRule t={theme} />

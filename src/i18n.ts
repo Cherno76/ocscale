@@ -75,6 +75,7 @@ const EN = {
   exchangeRate: 1,
   // Footer
   refresh: "Refresh",
+  moreActions: "More actions",
   launchAtLogin: "Launch at Login",
   quit: "Quit",
   trayModeHint: "Toggle menu-bar label (tokens / balance)",
@@ -102,6 +103,10 @@ const EN = {
   noCodeActivity: "No code activity recorded",
   // Sessions tab
   recentSessions: "Recent sessions",
+  searchSessions: "Search sessions…",
+  clearSearch: "Clear search",
+  sortRecent: "Recent",
+  sortTokens: "By tokens",
   noSessions: "No sessions in this period",
   durationLabel: "duration",
 };
@@ -153,6 +158,7 @@ const ZH: Dict = {
   currencySymbol: "¥",
   exchangeRate: 7.2,
   refresh: "刷新",
+  moreActions: "更多操作",
   launchAtLogin: "开机启动",
   quit: "退出",
   trayModeHint: "切换菜单栏显示（Token / 余额）",
@@ -190,6 +196,10 @@ const ZH: Dict = {
   noCodeActivity: "无代码活动记录",
   // Sessions tab
   recentSessions: "最近会话",
+  searchSessions: "搜索会话…",
+  clearSearch: "清除搜索",
+  sortRecent: "最近",
+  sortTokens: "按 Token",
   noSessions: "该时段无会话",
   durationLabel: "时长",
 };
