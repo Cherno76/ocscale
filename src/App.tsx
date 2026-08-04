@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
@@ -293,6 +293,16 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
   const [refreshing, setRefreshing] = useState(false);
   const [autostartOn, setAutostartOn] = useState(false);
   const [costTab, setCostTab] = useState<"model" | "project" | "agent">("model");
+  // Popover entrance: replay the fade/settle animation each time the panel
+  // opens (active flips false→true on focus). Reduced-motion is handled
+  // globally via the prefers-reduced-motion media query in main.tsx.
+  const [entering, setEntering] = useState(true);
+  useEffect(() => {
+    if (!active) return;
+    setEntering(true);
+    const id = window.setTimeout(() => setEntering(false), 280);
+    return () => window.clearTimeout(id);
+  }, [active]);
   useEffect(() => {
     // Read initial autostart state from the Rust backend.
     if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
@@ -488,6 +498,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
       position: "relative",
       background: "transparent", padding: 10,
       fontFamily: t.ui,
+      ...({ "--om-hover": t.surfaceAlt } as CSSProperties),
     }}>
       <div className="om-scroll"
         onMouseDown={canDrag ? (e) => {
@@ -512,6 +523,8 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
         width: "100%", height: "100%", overflowY: "auto",
         borderRadius: t.r.xl, background: t.card,
         border: `1px solid ${t.border}`, boxShadow: t.shadow,
+        animation: entering ? "om-pop-in 0.22s cubic-bezier(0.22, 1, 0.36, 1)" : undefined,
+        transformOrigin: "50% 0",
         padding: 0, color: t.text, cursor: canDrag ? "grab" : undefined,
       }}>
         {/* sticky header — stays put while the body scrolls */}
@@ -600,8 +613,8 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
                 is the cache share, matching the "% cached" label below. */}
             <div style={{ display: "flex", height: 8, borderRadius: 5, overflow: "hidden", marginBottom: 6, background: t.gridLine }}>
               {M.totalTokens > 0 && <>
-                <div style={{ width: `${cachePct}%`, background: t.accent }} />
-                <div style={{ width: `${restPct}%`, background: t.accentSoft }} />
+                <div style={{ width: `${cachePct}%`, background: t.accent, transition: "width .3s ease" }} />
+                <div style={{ width: `${restPct}%`, background: t.accentSoft, transition: "width .3s ease" }} />
               </>}
             </div>
             <SplitLegend t={t} tr={tr} cacheM={M.cacheTokens} restM={M.inputTokens + M.outputTokens}
@@ -622,18 +635,20 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
                   display: "inline-flex", alignItems: "center", justifyContent: "center",
                   font: `600 12px ${t.mono}`, color: t.dim,
                   background: t.segBg, border: `1px solid ${t.segBorder}`,
-                }}>‹</button>
+                }} className="om-iconbtn">‹</button>
                 <span style={{ font: `600 12px ${t.mono}`, color: t.dim }}>{periodTitle}</span>
                 <button onClick={() => goPeriod(1)} title="next" aria-label="next period" style={{
                   width: 24, height: 24, borderRadius: t.r.sm, cursor: "pointer", padding: 0,
                   display: "inline-flex", alignItems: "center", justifyContent: "center",
                   font: `600 12px ${t.mono}`, color: t.dim,
                   background: t.segBg, border: `1px solid ${t.segBorder}`,
-                }}>›</button>
+                }} className="om-iconbtn">›</button>
               </div>
             )}
             {/* bar chart */}
-            <BarChart data={P.series} theme={t} height={96} td={tr} />
+            <div key={period} className="om-fade-in">
+              <BarChart data={P.series} theme={t} height={96} td={tr} />
+            </div>
             <SectionRule t={t} m="16px 0 12px" />
             {/* models / projects — tabbed */}
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
@@ -672,25 +687,31 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
             <div style={{ marginBottom: 6 }}><Label t={t}>{costTab === "model" ? tr.costByModel : costTab === "project" ? tr.costByProject : tr.costByAgent}</Label></div>
             {costTab === "model" ? (
               costModels.length > 0
-                ? <CostDonut models={costModels} theme={t} size={104} thickness={16}
-                    currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} />
+                ? <div key={`donut:${period}`} className="om-fade-in">
+                    <CostDonut models={costModels} theme={t} size={104} thickness={16}
+                      currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} />
+                  </div>
                 : <div style={{ font: `500 11.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
             ) : costTab === "project" ? (
               projectCostItems.length > 0
-                ? <CostDonut models={projectCostItems} theme={t} size={104} thickness={16}
-                    currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} />
+                ? <div key={`donut:${period}`} className="om-fade-in">
+                    <CostDonut models={projectCostItems} theme={t} size={104} thickness={16}
+                      currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} />
+                  </div>
                 : <div style={{ font: `500 11.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
             ) : (
               agentCostItems.length > 0
-                ? <CostDonut models={agentCostItems} theme={t} size={104} thickness={16}
-                    currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} preserveColors />
+                ? <div key={`donut:${period}`} className="om-fade-in">
+                    <CostDonut models={agentCostItems} theme={t} size={104} thickness={16}
+                      currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} preserveColors />
+                  </div>
                 : <div style={{ font: `500 11.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
             )}
           </div>
           {/* ── right column ── */}
           <div style={{ minWidth: 0 }}>
             {/* KPI cards — 2×2 elevated grid */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div key={period} className="om-fade-in" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <KpiCard label={tr.requests} value={fmtInt(M.requests)} sub={`${M.sessions} ${tr.sessions}`} theme={t}>
                 <Sparkline values={P.reqTrend.length ? P.reqTrend : [0, 0]} theme={t} width={54} height={22} accent={t.accent} />
               </KpiCard>

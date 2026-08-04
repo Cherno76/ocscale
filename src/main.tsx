@@ -8,6 +8,29 @@ style.textContent = `
   * { box-sizing: border-box; }
   /* Let form controls / scrollbars follow the active theme (light vs dark). */
   :root { color-scheme: light dark; }
+  /* Popover entrance: fades in and settles from just above the tray anchor. */
+  @keyframes om-pop-in {
+    from { opacity: 0; transform: translateY(8px) scale(0.985); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  /* Content cross-fade used on period / tab switches. */
+  @keyframes om-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  .om-fade-in { animation: om-fade-in 0.24s ease-out; }
+  /* Theme-aware hover well for small toolbar-style buttons (uses --om-hover
+     set on the panel root by the active theme). */
+  .om-iconbtn { transition: background .15s, color .15s; }
+  .om-iconbtn:hover { background: var(--om-hover); }
+  /* Respect the OS "reduce motion" setting app-wide. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
   .om-scroll { scrollbar-width: none; -ms-overflow-style: none; }
   .om-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
   /* Hidden scrollbars for the capped inner lists (model/agent/session rows):

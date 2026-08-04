@@ -84,9 +84,10 @@ export function BarChart({ data, theme, height = 96, accent, accentSoft, radius 
               onMouseEnter={empty ? undefined : (e) => onBar(d, e)}
               onMouseLeave={empty ? undefined : () => setHi(null)}
               style={{ flex: 1, alignSelf: "stretch", display: "flex", flexDirection: "column", justifyContent: "flex-end", position: "relative", zIndex: 1, cursor: "default", opacity: hi && !on && !empty ? 0.55 : 1, transition: "opacity .12s" }}>
-              <div style={{ height: hR, background: t.reasoningCol, borderRadius: `${effRadius}px ${effRadius}px 0 0` }} />
-              <div style={{ height: hO, background: accentSoft }} />
-              <div style={{ height: hI, background: accent }} />
+              {/* Heights ease when live data or a period switch changes them. */}
+              <div style={{ height: hR, background: t.reasoningCol, borderRadius: `${effRadius}px ${effRadius}px 0 0`, transition: "height .28s cubic-bezier(0.22, 1, 0.36, 1)" }} />
+              <div style={{ height: hO, background: accentSoft, transition: "height .28s cubic-bezier(0.22, 1, 0.36, 1)" }} />
+              <div style={{ height: hI, background: accent, transition: "height .28s cubic-bezier(0.22, 1, 0.36, 1)" }} />
             </div>
           );
         })}
