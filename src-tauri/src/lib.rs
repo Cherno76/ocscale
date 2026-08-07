@@ -948,9 +948,8 @@ async fn get_balance() -> Option<balance::BalanceInfo> {
         .unwrap_or(None)
 }
 
-/// Whether a DeepSeek key is available from any source (env, Codex/OpenCode
-/// configs, or a user-entered stored key). The UI prompts for a key when this
-/// reports "missing".
+/// Whether a DeepSeek key is saved in the app (the only key source). The UI
+/// prompts for a key when this reports "missing".
 #[tauri::command]
 fn get_deepseek_key_status() -> String {
     if balance::key_configured() {

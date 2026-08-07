@@ -1,16 +1,14 @@
 //! DeepSeek account balance — GET https://api.deepseek.com/user/balance.
 //!
 //! Read-only, cached for 5 minutes (the panel refreshes every 30s; the balance
-//! API shouldn't be hammered). API key resolution order:
-//!   1. `DEEPSEEK_API_KEY` env var
-//!   2. `~/.codex/config.toml` → `[model_providers.deepseek]` →
-//!      `experimental_bearer_token` / `api_key` / `env_key`
-//!   3. `~/.config/opencode/opencode.json` → `provider.deepseek.options.apiKey`
-//!   4. A key the user entered in the OCScale panel, stored in the app data
-//!      dir (`deepseek_key`, 0600). Auto-detected keys are never persisted;
-//!      only an explicit user-entered key is saved (for sharing the app with
-//!      people who don't use Codex/OpenCode configs). The key is never logged
-//!      or printed.
+//! API shouldn't be hammered).
+//!
+//! The API key comes **only** from the key the user enters in the panel
+//! (`set_deepseek_key`), stored in the app data dir (`deepseek_key`, 0600).
+//! There is deliberately no discovery from environment variables or other
+//! apps' configs — when OCScale is shared, each person sets their own key in
+//! the UI (`get_deepseek_key_status` reports "missing" to show the prompt).
+//! The key is never logged or printed.
 
 use serde::{Deserialize, Serialize};
 use std::sync::{Mutex, OnceLock};
@@ -87,14 +85,7 @@ fn fetch_balance(key: &str) -> Option<BalanceInfo> {
 }
 
 fn api_key() -> Option<String> {
-    if let Ok(k) = std::env::var("DEEPSEEK_API_KEY") {
-        if !k.is_empty() {
-            return Some(k);
-        }
-    }
-    key_from_codex_config()
-        .or_else(key_from_opencode_config)
-        .or_else(stored_key)
+    stored_key()
 }
 
 /// Whether any key source is configured (so the UI knows when to prompt).
@@ -139,65 +130,6 @@ pub fn clear_stored_key() {
     }
 }
 
-/// `~/.codex/config.toml` → `[model_providers.deepseek]` →
-/// `experimental_bearer_token` / `api_key` / `env_key` (env_key is resolved
-/// to the value of that environment variable).
-fn key_from_codex_config() -> Option<String> {
-    let path = dirs::home_dir()?.join(".codex/config.toml");
-    let text = std::fs::read_to_string(path).ok()?;
-    let mut in_deepseek = false;
-    let mut result: Option<String> = None;
-    for line in text.lines() {
-        let t = line.trim();
-        if t.starts_with('[') && t.ends_with(']') {
-            in_deepseek = t == "[model_providers.deepseek]";
-            continue;
-        }
-        if !in_deepseek {
-            continue;
-        }
-        if let Some(v) = parse_key_line(t, "experimental_bearer_token")
-            .or_else(|| parse_key_line(t, "api_key"))
-        {
-            result = Some(v);
-            break;
-        }
-        if let Some(env) = parse_key_line(t, "env_key") {
-            result = std::env::var(env).ok().filter(|s| !s.is_empty());
-            break;
-        }
-    }
-    result
-}
-
-/// `~/.config/opencode/opencode.json` → `provider.deepseek.options.apiKey`.
-fn key_from_opencode_config() -> Option<String> {
-    let cfg_dir = if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
-        std::path::PathBuf::from(xdg).join("opencode")
-    } else {
-        dirs::home_dir()?.join(".config/opencode")
-    };
-    let text = std::fs::read_to_string(cfg_dir.join("opencode.json")).ok()?;
-    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
-    v.pointer("/provider/deepseek/options/apiKey")
-        .and_then(|x| x.as_str())
-        .map(|s| s.to_string())
-}
-
-/// Parse `key = "value"` / `key = 'value'` (also tolerates a trailing inline
-/// comment before the closing quote is not present — tokens contain no spaces).
-fn parse_key_line(line: &str, key: &str) -> Option<String> {
-    let rest = line.strip_prefix(key)?.trim_start();
-    let rest = rest.strip_prefix('=')?.trim_start();
-    let v = rest.strip_prefix('"').or_else(|| rest.strip_prefix('\''))?;
-    let v = v.strip_suffix('"').or_else(|| v.strip_suffix('\''))?;
-    if v.is_empty() {
-        None
-    } else {
-        Some(v.to_string())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,19 +153,6 @@ mod tests {
         assert_eq!(b.currency, "CNY");
         assert_eq!(b.total_balance, "110.00");
         assert_eq!(b.topped_up_balance, "100.00");
-    }
-
-    #[test]
-    fn parses_key_lines() {
-        assert_eq!(
-            parse_key_line("experimental_bearer_token = \"sk-abc123\"", "experimental_bearer_token"),
-            Some("sk-abc123".to_string())
-        );
-        assert_eq!(
-            parse_key_line("env_key = 'DEEPSEEK_API_KEY'", "env_key"),
-            Some("DEEPSEEK_API_KEY".to_string())
-        );
-        assert_eq!(parse_key_line("base_url = \"https://x\"", "experimental_bearer_token"), None);
     }
 
     #[test]
