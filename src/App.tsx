@@ -59,12 +59,16 @@ function Delta({ v, theme }: { v: number; theme: Theme }) {
   );
 }
 
-// macOS: the panel carries a real NSVisualEffectView frosted-glass backdrop
-// (applied in Rust), so the card background is translucent to let the blur
+// macOS: the panel carries a real Liquid Glass backdrop (applied in Rust), so
+// the card background is a translucent tint that lets the glass + wallpaper
 // show through. Elsewhere (Windows/Linux, browser preview) keep it solid.
 function panelBackground(dark: boolean, t: Theme): string {
   const isMac = typeof navigator !== "undefined" && navigator.userAgent.includes("Macintosh");
-  return isMac ? (dark ? "rgba(31,34,38,0.84)" : "rgba(255,255,255,0.80)") : t.card;
+  return isMac
+    ? dark
+      ? "linear-gradient(180deg, rgba(46,50,58,0.52), rgba(24,27,33,0.40))"
+      : "linear-gradient(180deg, rgba(255,255,255,0.62), rgba(255,255,255,0.46))"
+    : t.card;
 }
 
 // Balance in the current interface currency: the English UI shows everything
@@ -82,7 +86,9 @@ function fmtBalance(b: BalanceInfo, lang: Lang, tr: Dict): string {
 // so the displayed percentages sum to exactly 100.0% (plain rounding wouldn't).
 function ProjectRow({ p, max, theme, share }: { p: ProjectStat; max: number; theme: Theme; share: number }) {
   const pctStr = share % 1 === 0 ? share.toFixed(0) : share.toFixed(1);
-  const PALETTE = ["#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#4b5a52", "#a78bfa", "#e0795f", "#6ee7b7"];
+  // macOS system palette — the Golden Gate look pairs each model with a
+  // system hue instead of a single blue ramp.
+  const PALETTE = ["#0a84ff", "#30d158", "#ff9f0a", "#bf5af2", "#ff375f", "#64d2ff", "#ffd60a", "#98989d"];
   const hash = p.projectId.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
   const color = PALETTE[hash % PALETTE.length];
   return (
@@ -140,6 +146,7 @@ function KpiCard({ label, value, sub, theme, accent, children }:
   return (
     <div style={{
       background: t.surface, border: `1px solid ${t.border}`, borderRadius: t.r.md,
+      boxShadow: `inset 0 1px 0 ${t.hi}, 0 2px 8px rgba(0,0,0,0.16)`,
       padding: "11px 12px", minWidth: 0,
     }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginBottom: 7 }}>
@@ -206,6 +213,7 @@ function ThemeToggle({ pref, theme, td, onCycle }: { pref: "dark" | "light" | "s
       display: "inline-flex", alignItems: "center", justifyContent: "center",
       width: 28, height: 28, borderRadius: t.r.sm, cursor: "pointer", padding: 0,
       background: t.segBg, border: `1px solid ${t.segBorder}`, color: t.dim,
+      boxShadow: `inset 0 1px 0 ${t.hi}`,
       transition: "background .15s, color .15s",
     }}>
       {pref === "light" ? (
@@ -234,6 +242,7 @@ function LangToggle({ lang, onClick, theme }: { lang: Lang; onClick: () => void;
       width: 28, height: 28, borderRadius: theme.r.sm, cursor: "pointer", padding: 0,
       background: theme.segBg, border: `1px solid ${theme.segBorder}`, color: theme.dim,
       font: `600 ${theme.fs.small}px ${theme.mono}`, letterSpacing: ".02em",
+      boxShadow: `inset 0 1px 0 ${theme.hi}`,
       transition: "background .15s, color .15s",
     }}>
       {lang === "en" ? "中" : "EN"}
@@ -273,6 +282,7 @@ function IconButton({ theme, title, onClick, danger, disabled, active, children 
         cursor: disabled ? "default" : "pointer",
         background: h || active ? t.segOnBg : t.segBg, border: `1px solid ${t.segBorder}`,
         color: danger && h ? t.danger : t.dim,
+        boxShadow: `inset 0 1px 0 ${t.hi}`,
         transition: "background .15s, color .15s",
       }}>
       {children}
@@ -565,7 +575,8 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
         style={{
         width: "100%", height: "100%", overflowY: "auto",
         borderRadius: t.r.xl, background: panelBg,
-        border: `1px solid ${t.border}`, boxShadow: t.shadow,
+        border: `1px solid ${t.border}`,
+        boxShadow: `inset 0 1px 0 ${t.hi}, inset 0 0 0 1px rgba(0,0,0,0.04), ${t.shadow}`,
         animation: entering ? "om-pop-in 0.22s cubic-bezier(0.22, 1, 0.36, 1)" : undefined,
         transformOrigin: "50% 0",
         padding: 0, color: t.text, cursor: canDrag ? "grab" : undefined,
@@ -645,7 +656,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
                     <div style={{
                       position: "absolute", right: 0, top: "calc(100% + 6px)", zIndex: 11, width: 184,
                       background: t.surface, border: `1px solid ${t.border}`, borderRadius: t.r.md,
-                      boxShadow: t.shadow, padding: 4,
+                      boxShadow: `inset 0 1px 0 ${t.hi}, ${t.shadow}`, padding: 4,
                     }}>
                       <MenuItem theme={t} onClick={captureScreenshot} disabled={shotBusy} ariaLabel={tr.screenshotTitle}
                         right={shotBusy ? <svg className="om-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={t.dim} strokeWidth="2.6" strokeLinecap="round"><path d="M12 3a9 9 0 1 0 9 9" /></svg> : undefined}>
@@ -715,9 +726,9 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
             </div>
             {/* cached vs rest (uncached input + output) — 2-colour pill. Dark segment
                 is the cache share, matching the "% cached" label below. */}
-            <div style={{ display: "flex", height: 8, borderRadius: 5, overflow: "hidden", marginBottom: 6, background: t.gridLine }}>
+            <div style={{ display: "flex", height: 8, borderRadius: 5, overflow: "hidden", marginBottom: 6, background: t.gridLine, boxShadow: "inset 0 1px 1px rgba(0,0,0,0.28)" }}>
               {M.totalTokens > 0 && <>
-                <div style={{ width: `${cachePct}%`, background: t.accent, transition: "width .3s ease" }} />
+                <div style={{ width: `${cachePct}%`, background: `linear-gradient(90deg, ${t.accentSoft}, ${t.accent})`, transition: "width .3s ease" }} />
                 <div style={{ width: `${restPct}%`, background: t.accentSoft, transition: "width .3s ease" }} />
               </>}
             </div>
@@ -1229,7 +1240,8 @@ export default function App() {
         ? <div style={{ padding: 20, font: `500 12px ${t.mono}`, color: t.danger }}>{tr.failedToLoad} {err}</div>
         : !dash
         ? <div style={{ height: "100vh", padding: 10, boxSizing: "border-box", background: "transparent" }}>
-            <div style={{ height: "100%", borderRadius: t.r.xl, background: panelBackground(dark, t), border: `1px solid ${t.border}`, boxShadow: t.shadow,
+            <div style={{ height: "100%", borderRadius: t.r.xl, background: panelBackground(dark, t), border: `1px solid ${t.border}`,
+              boxShadow: `inset 0 1px 0 ${t.hi}, ${t.shadow}`,
               display: "flex", alignItems: "center", justifyContent: "center",
               font: `500 12px ${t.mono}`, color: t.dim }}>{tr.loading}</div>
           </div>

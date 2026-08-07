@@ -85,7 +85,7 @@ export function BarChart({ data, theme, height = 96, accent, accentSoft, radius 
             <div key={i}
               onMouseEnter={empty ? undefined : (e) => onBar(d, e)}
               onMouseLeave={empty ? undefined : () => setHi(null)}
-              style={{ flex: 1, alignSelf: "stretch", display: "flex", flexDirection: "column", justifyContent: "flex-end", position: "relative", zIndex: 1, cursor: "default", opacity: hi && !on && !empty ? 0.55 : 1, transition: "opacity .12s" }}>
+              style={{ flex: 1, alignSelf: "stretch", display: "flex", flexDirection: "column", justifyContent: "flex-end", position: "relative", zIndex: 1, cursor: "default", opacity: hi && !on && !empty ? 0.55 : 1, transition: "opacity .12s", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.30)" }}>
               {/* Heights ease when live data or a period switch changes them. */}
               <div style={{ height: hR, background: t.reasoningCol, borderRadius: `${effRadius}px ${effRadius}px 0 0`, transition: "height .28s cubic-bezier(0.22, 1, 0.36, 1)" }} />
               <div style={{ height: hO, background: accentSoft, transition: "height .28s cubic-bezier(0.22, 1, 0.36, 1)" }} />
@@ -140,10 +140,10 @@ export function Sparkline({ values, theme, width = 80, height = 24, accent, stro
   );
 }
 
-// Cost-rank palette: darkest/most-prominent blue for the biggest cost share,
-// fading down.
-const DONUT_PALETTE = ["#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#4b5a52"];
-const DONUT_OVERFLOW = "#79817b";
+// Cost-rank palette: most-prominent system blue for the biggest cost share,
+// then the rest of the macOS palette, fading down.
+const DONUT_PALETTE = ["#0a84ff", "#30d158", "#ff9f0a", "#bf5af2", "#98989d"];
+const DONUT_OVERFLOW = "#98989d";
 
 export function CostDonut({ models, theme, size = 104, thickness = 16, currencySymbol = "$", exchangeRate = 1,
   preserveColors,
@@ -189,7 +189,7 @@ export function CostDonut({ models, theme, size = 104, thickness = 16, currencyS
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
       <div style={{ position: "relative", width: size, height: size, flex: "0 0 auto" }}>
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ overflow: "visible" }}>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ overflow: "visible", filter: `drop-shadow(0 0 6px ${t.accent}44)` }}>
           {models.length === 1 ? (
             // Single model: a full closed ring (one 360° arc would be
             // degenerate). Trace both edges with a 1px card-coloured stroke for

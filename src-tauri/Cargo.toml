@@ -1,6 +1,6 @@
 [package]
 name = "ocscale"
-version = "0.6.13"
+version = "0.6.14"
 description = "OpenCode token usage dashboard"
 authors = ["you"]
 edition = "2021"
@@ -29,8 +29,10 @@ tauri-plugin-single-instance = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2" }
-# Frosted-glass backdrop (NSVisualEffectView behind the webview) for the panel.
+# Liquid Glass backdrop (macOS 26+) / NSVisualEffectView fallback for the panel.
 window-vibrancy = "0.8"
+# Type for the WKWebView pointer handed to apply_liquid_glass.
+objc2-app-kit = "0.3"
 
 [profile.release]
 panic = "abort"

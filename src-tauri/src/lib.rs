@@ -1130,15 +1130,36 @@ pub fn run() {
             // on resign-key (clicking outside / switching apps) like a popover.
             #[cfg(target_os = "macos")]
             if let Some(window) = app.get_webview_window("main") {
-                // Frosted-glass backdrop: window-vibrancy adds an
-                // NSVisualEffectView *behind* the webview (it never replaces the
-                // content view), so the panel's transparent areas show the
-                // blurred desktop like a native popover. Radius ~28 keeps the
-                // glass footprint rounded under the card's 20px corners (the
-                // card sits 10px inside the window edge).
-                use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
-                if let Err(e) = apply_vibrancy(&window, NSVisualEffectMaterial::Popover, None, Some(28.0)) {
-                    eprintln!("vibrancy unavailable: {e}");
+                // Liquid Glass backdrop (macOS 26+): reparent the WKWebView into
+                // an NSGlassEffectView so the panel is a true glass sheet that
+                // refracts the wallpaper — the macOS 27 Golden Gate look. On
+                // older macOS the API errors and we fall back to the classic
+                // NSVisualEffectView vibrancy.
+                let window_for_glass = window.clone();
+                if let Err(e) = window.with_webview(move |webview| {
+                    use objc2_app_kit::NSView;
+                    let view: &NSView = unsafe { &*(webview.inner().cast::<NSView>()) };
+                    let options = window_vibrancy::LiquidGlassOptions::new(
+                        window_vibrancy::NSGlassEffectViewStyle::Clear,
+                    )
+                    .radius(26.0)
+                    .opaque(false)
+                    .content_view(view);
+                    match window_vibrancy::apply_liquid_glass(&window_for_glass, options) {
+                        Ok(()) => {}
+                        Err(e) => {
+                            eprintln!("liquid glass unavailable, falling back to vibrancy: {e}");
+                            use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
+                            let _ = apply_vibrancy(
+                                &window_for_glass,
+                                NSVisualEffectMaterial::Popover,
+                                None,
+                                Some(28.0),
+                            );
+                        }
+                    }
+                }) {
+                    eprintln!("with_webview failed: {e}");
                 }
                 use tauri_nspanel::cocoa::appkit::NSWindowCollectionBehavior;
                 // NSWindowStyleMaskNonActivatingPanel — receive events without
