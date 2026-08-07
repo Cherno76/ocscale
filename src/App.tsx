@@ -74,6 +74,29 @@ function panelBackground(dark: boolean, t: Theme): string {
     : t.card;
 }
 
+// Flatten a possibly-transparent PNG onto a solid background. WKWebView's
+// modern-screenshot path leaves the card's rounded corners transparent even
+// though a backgroundColor was requested, which shows up as black corner
+// triangles in most viewers. Draw the image over a solid fill to fix that.
+function flattenPng(dataUrl: string, bg: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement("canvas");
+      c.width = img.width;
+      c.height = img.height;
+      const ctx = c.getContext("2d");
+      if (!ctx) return reject(new Error("no 2d context"));
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(img, 0, 0);
+      resolve(c.toDataURL("image/png"));
+    };
+    img.onerror = () => reject(new Error("flatten failed"));
+    img.src = dataUrl;
+  });
+}
+
 // Balance in the current interface currency: the English UI shows everything
 // in USD (cost included), so a CNY balance is converted at the fixed rate the
 // ZH UI uses (¥7.2/$1); the Chinese UI keeps the raw ¥ amount.
@@ -549,13 +572,16 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
         height: el.scrollHeight,
         filter: (n) => !(n instanceof HTMLElement && n.getAttribute("aria-label") === tr.screenshotTitle),
       });
+      // WKWebView leaves the rounded corners transparent; bake the solid
+      // background in so the saved PNG has no see-through corners.
+      const flat = await flattenPng(dataUrl, dark ? "#1f2226" : "#ffffff");
       const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
       if (inTauri) {
-        await invoke<string>("save_screenshot", { dataUrl });
+        await invoke<string>("save_screenshot", { dataUrl: flat });
         showToast(tr.savedToDesktop, true);
       } else {
         const a = document.createElement("a");
-        a.href = dataUrl;
+        a.href = flat;
         a.download = "ocscale.png";
         document.body.appendChild(a);
         a.click();
