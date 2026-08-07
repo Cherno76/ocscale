@@ -573,7 +573,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <TokenGlyph color={t.accent} size={18} />
               <span style={{ font: `600 14px ${t.ui}`, color: t.text, letterSpacing: ".01em" }}>{tr.appName}</span>
-              <span style={{ font: `500 10.5px ${t.mono}`, color: t.faint, marginLeft: 2 }}>v{version || "dev"} · © 2026 · MIT</span>
+              <span style={{ font: `500 10.5px ${t.mono}`, color: t.faint, marginLeft: 2 }}>v{version || "dev"} · © 2026 HduSy · Cherno76 · MIT</span>
             </div>
             <div data-no-drag="" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "default" }}>
               <Segmented value={tab} itemValues={["Overview","Agents","Sessions"]} theme={t}
