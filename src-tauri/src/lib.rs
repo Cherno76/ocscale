@@ -948,6 +948,39 @@ async fn get_balance() -> Option<balance::BalanceInfo> {
         .unwrap_or(None)
 }
 
+/// Whether a DeepSeek key is available from any source (env, Codex/OpenCode
+/// configs, or a user-entered stored key). The UI prompts for a key when this
+/// reports "missing".
+#[tauri::command]
+fn get_deepseek_key_status() -> String {
+    if balance::key_configured() {
+        "configured".to_string()
+    } else {
+        "missing".to_string()
+    }
+}
+
+/// Save a user-entered DeepSeek key (validated, stored 0600 in the data dir)
+/// and re-label the tray in case it now shows a balance.
+#[tauri::command]
+async fn set_deepseek_key(app: tauri::AppHandle, key: String) -> Result<(), String> {
+    balance::save_stored_key(&key)?;
+    let app2 = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let dash = parser::build_dashboard_with_mode(utc_day_enabled());
+        update_tray_label(&app2, &dash);
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Remove the user-entered DeepSeek key.
+#[tauri::command]
+fn clear_deepseek_key() {
+    balance::clear_stored_key();
+}
+
 /// Current tray label mode: "tokens" or "balance".
 #[tauri::command]
 fn get_tray_mode() -> String {
@@ -1096,7 +1129,7 @@ pub fn run() {
     }
 
     builder
-        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag, get_autostart, set_autostart, quit_app, get_version, get_balance, get_tray_mode, set_tray_mode, get_day_mode, set_day_mode, get_period, fit_panel, set_lang])
+        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag, get_autostart, set_autostart, quit_app, get_version, get_balance, get_deepseek_key_status, set_deepseek_key, clear_deepseek_key, get_tray_mode, set_tray_mode, get_day_mode, set_day_mode, get_period, fit_panel, set_lang])
         .setup(move |app| {
             // Menu-bar–only app: no Dock icon, runs in the background.
             #[cfg(target_os = "macos")]

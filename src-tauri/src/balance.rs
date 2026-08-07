@@ -6,7 +6,11 @@
 //!   2. `~/.codex/config.toml` → `[model_providers.deepseek]` →
 //!      `experimental_bearer_token` / `api_key` / `env_key`
 //!   3. `~/.config/opencode/opencode.json` → `provider.deepseek.options.apiKey`
-//! The key is never logged, printed, or persisted by this module.
+//!   4. A key the user entered in the OCScale panel, stored in the app data
+//!      dir (`deepseek_key`, 0600). Auto-detected keys are never persisted;
+//!      only an explicit user-entered key is saved (for sharing the app with
+//!      people who don't use Codex/OpenCode configs). The key is never logged
+//!      or printed.
 
 use serde::{Deserialize, Serialize};
 use std::sync::{Mutex, OnceLock};
@@ -14,6 +18,12 @@ use std::time::{Duration, Instant};
 
 const BALANCE_URL: &str = "https://api.deepseek.com/user/balance";
 const CACHE_SECS: u64 = 5 * 60;
+
+/// True for plausible DeepSeek API keys (`sk-` + at least 8 more chars).
+pub fn validate_key(key: &str) -> bool {
+    let k = key.trim();
+    k.len() >= 10 && k.starts_with("sk-")
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct BalanceInfo {
@@ -82,7 +92,51 @@ fn api_key() -> Option<String> {
             return Some(k);
         }
     }
-    key_from_codex_config().or_else(key_from_opencode_config)
+    key_from_codex_config()
+        .or_else(key_from_opencode_config)
+        .or_else(stored_key)
+}
+
+/// Whether any key source is configured (so the UI knows when to prompt).
+pub fn key_configured() -> bool {
+    api_key().is_some()
+}
+
+fn stored_key_path() -> Option<std::path::PathBuf> {
+    let dir = dirs::data_dir()?.join("ocscale");
+    let _ = std::fs::create_dir_all(&dir);
+    Some(dir.join("deepseek_key"))
+}
+
+/// The user-entered key, if any (stored by `save_stored_key`).
+fn stored_key() -> Option<String> {
+    let p = stored_key_path()?;
+    let s = std::fs::read_to_string(p).ok()?;
+    let s = s.trim().to_string();
+    if s.is_empty() { None } else { Some(s) }
+}
+
+/// Persist a user-entered key in the app data dir with 0600 permissions.
+pub fn save_stored_key(key: &str) -> Result<(), String> {
+    let k = key.trim();
+    if !validate_key(k) {
+        return Err("key must look like sk-…".to_string());
+    }
+    let p = stored_key_path().ok_or_else(|| "no data directory".to_string())?;
+    std::fs::write(&p, k).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
+}
+
+/// Remove the user-entered key.
+pub fn clear_stored_key() {
+    if let Some(p) = stored_key_path() {
+        let _ = std::fs::remove_file(p);
+    }
 }
 
 /// `~/.codex/config.toml` → `[model_providers.deepseek]` →
@@ -180,5 +234,15 @@ mod tests {
             Some("DEEPSEEK_API_KEY".to_string())
         );
         assert_eq!(parse_key_line("base_url = \"https://x\"", "experimental_bearer_token"), None);
+    }
+
+    #[test]
+    fn key_validation() {
+        assert!(validate_key("sk-0123456789abcdef"));
+        assert!(validate_key("  sk-abcdefghij  "));
+        assert!(!validate_key("sk-ab"));      // too short
+        assert!(!validate_key("not-a-key"));  // no sk- prefix
+        assert!(!validate_key(""));
+        assert!(!validate_key("sk-123456")); // 9 chars total
     }
 }

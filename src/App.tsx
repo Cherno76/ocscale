@@ -318,8 +318,8 @@ function MenuItem({ theme, onClick, danger, disabled, ariaLabel, children, right
   );
 }
 
-function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, toggleLang, onRefresh, version, balance, trayMode, onToggleTrayMode, dayMode, onDayModeChange }:
-  { dash: Dashboard; dark: boolean; themePref: "dark" | "light" | "system"; onToggleTheme: () => void; openGen: number; active: boolean; lang: Lang; toggleLang: () => void; onRefresh: () => void; version: string; balance: BalanceInfo | null; trayMode: "tokens" | "balance"; onToggleTrayMode: () => void; dayMode: "local" | "utc"; onDayModeChange: (m: "local" | "utc") => void }) {
+function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, toggleLang, onRefresh, version, balance, keyMissing, onSetKey, trayMode, onToggleTrayMode, dayMode, onDayModeChange }:
+  { dash: Dashboard; dark: boolean; themePref: "dark" | "light" | "system"; onToggleTheme: () => void; openGen: number; active: boolean; lang: Lang; toggleLang: () => void; onRefresh: () => void; version: string; balance: BalanceInfo | null; keyMissing: boolean; onSetKey: (key: string) => Promise<boolean>; trayMode: "tokens" | "balance"; onToggleTrayMode: () => void; dayMode: "local" | "utc"; onDayModeChange: (m: "local" | "utc") => void }) {
   const t = TH[dark ? "dark" : "light"];
   const { t: tr } = useT();
   const panelBg = panelBackground(dark, t);
@@ -348,6 +348,10 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
     return () => window.clearTimeout(id);
   }, [active]);
   const [menuOpen, setMenuOpen] = useState(false);
+  // DeepSeek key entry (shown when no key is configured anywhere).
+  const [keyOpen, setKeyOpen] = useState(false);
+  const [keyDraft, setKeyDraft] = useState("");
+  const [keySaving, setKeySaving] = useState(false);
   // The popover hides on blur — drop any open menu so the next open is clean.
   useEffect(() => { if (!active) setMenuOpen(false); }, [active]);
   // Close the overflow menu on Escape.
@@ -507,6 +511,19 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
     setToast({ msg, ok });
     toastTimer.current = window.setTimeout(() => setToast(null), 1800);
+  };
+  const saveKey = async () => {
+    if (keySaving) return;
+    setKeySaving(true);
+    const ok = await onSetKey(keyDraft.trim());
+    setKeySaving(false);
+    if (ok) {
+      setKeyOpen(false);
+      setKeyDraft("");
+      showToast(tr.keySaved, true);
+    } else {
+      showToast(tr.keyInvalid, false);
+    }
   };
   const captureScreenshot = async () => {
     if (shotBusy) return;
@@ -726,11 +743,48 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
                 <div style={{ font: `600 ${t.fs.label}px ${t.ui}`, color: t.dim }}>{tr.estCost}</div>
                 <div style={{ font: `700 22px/1 ${t.mono}`, color: t.accent, marginTop: 5 }}>{tr.currencySymbol}{(M.cost * tr.exchangeRate).toFixed(2)}</div>
                 <div style={{ font: `500 ${t.fs.small}px ${t.mono}`, color: t.faint, marginTop: 5, display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
-                  {tr.balance} {balance ? fmtBalance(balance, lang, tr) : tr.costDash}
+                  {tr.balance}{" "}
+                  {balance ? fmtBalance(balance, lang, tr) : keyMissing ? (
+                    <button onClick={() => setKeyOpen(true)} style={{
+                      font: `600 9.5px ${t.mono}`, color: t.accent, background: `${t.accent}22`,
+                      border: `1px solid ${t.accent}55`, borderRadius: t.r.sm, padding: "2px 7px", cursor: "pointer",
+                    }}>{tr.setApiKey}</button>
+                  ) : tr.costDash}
                   <Switch on={trayMode === "balance"} theme={t} onClick={onToggleTrayMode} title={tr.trayModeHint} />
                 </div>
               </div>
             </div>
+            {/* DeepSeek key entry — only offered when no key is configured */}
+            {keyOpen && (
+              <div style={{
+                background: t.surface, border: `1px solid ${t.border}`, borderRadius: t.r.md,
+                boxShadow: `inset 0 1px 0 ${t.hi}, 0 2px 8px rgba(0,0,0,0.16)`,
+                padding: 10, marginBottom: 10,
+              }}>
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 7 }}>
+                  <span style={{ font: `600 ${t.fs.label}px ${t.ui}`, color: t.dim }}>{tr.deepseekKey}</span>
+                  <span style={{ font: `500 9.5px ${t.mono}`, color: t.faint }}>api.deepseek.com</span>
+                </div>
+                <input type="password" autoFocus value={keyDraft}
+                  onChange={(e) => setKeyDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") saveKey(); if (e.key === "Escape") setKeyOpen(false); }}
+                  placeholder={tr.deepseekKeyPlaceholder} aria-label={tr.deepseekKey}
+                  style={{
+                    width: "100%", background: "rgba(0,0,0,0.18)", border: `1px solid ${t.segBorder}`,
+                    borderRadius: t.r.sm, padding: "6px 9px", font: `500 11px ${t.mono}`, color: t.text, outline: "none",
+                  }} />
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 7, marginTop: 8 }}>
+                  <button onClick={() => setKeyOpen(false)} style={{
+                    font: `600 10.5px ${t.ui}`, color: t.dim, background: t.segBg, border: `1px solid ${t.segBorder}`,
+                    borderRadius: t.r.sm, padding: "4px 10px", cursor: "pointer",
+                  }}>{tr.cancel}</button>
+                  <button onClick={saveKey} disabled={keySaving} style={{
+                    font: `600 10.5px ${t.ui}`, color: "#fff", background: t.accent, border: "none",
+                    borderRadius: t.r.sm, padding: "4px 12px", cursor: keySaving ? "default" : "pointer", opacity: keySaving ? 0.7 : 1,
+                  }}>{tr.save}</button>
+                </div>
+              </div>
+            )}
             {/* cached vs rest (uncached input + output) — 2-colour pill. Dark segment
                 is the cache share, matching the "% cached" label below. */}
             <div style={{ display: "flex", height: 8, borderRadius: 5, overflow: "hidden", marginBottom: 6, background: t.gridLine, boxShadow: "inset 0 1px 1px rgba(0,0,0,0.28)" }}>
@@ -1111,6 +1165,7 @@ export default function App() {
   const [err, setErr] = useState<string | null>(null);
   const [version, setVersion] = useState("");
   const [balance, setBalance] = useState<BalanceInfo | null>(null);
+  const [keyMissing, setKeyMissing] = useState(false);
   const [trayMode, setTrayMode] = useState<"tokens" | "balance">("tokens");
   const [dayMode, setDayMode] = useState<"local" | "utc">("local");
   const applyDash = (d: Dashboard) => { setDash(d); setErr(null); };
@@ -1158,6 +1213,17 @@ export default function App() {
     invoke<string>("set_day_mode", { mode: m }).catch(() => {});
     fetchDashboard().then(applyDash).catch(() => {});
   };
+  // Save a user-entered DeepSeek key, then refresh balance + key status.
+  const handleSetKey = async (key: string): Promise<boolean> => {
+    try {
+      await invoke("set_deepseek_key", { key });
+      setKeyMissing(false);
+      invoke<BalanceInfo>("get_balance").then(setBalance).catch(() => {});
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   useEffect(() => {
     // initial load (shows the Loading state only until the first data arrives)
@@ -1172,6 +1238,9 @@ export default function App() {
       // Seed the Rust-side language pref from the saved panel language so the
       // tray label matches the interface from the first launch.
       invoke("set_lang", { lang: curLang }).catch(() => {});
+      invoke<string>("get_deepseek_key_status")
+        .then((s) => setKeyMissing(s !== "configured"))
+        .catch(() => {});
     } else {
       setVersion("dev");
     }
@@ -1203,6 +1272,9 @@ export default function App() {
           setOpenGen((g) => g + 1); // re-run the count-up on each open
           fetchDashboard().then(applyDash).catch(() => {});
           invoke<BalanceInfo>("get_balance").then(setBalance).catch(() => {});
+          invoke<string>("get_deepseek_key_status")
+            .then((s) => setKeyMissing(s !== "configured"))
+            .catch(() => {});
         }
       })
       .then(track);
@@ -1254,7 +1326,8 @@ export default function App() {
           </div>
         : <Panel dash={dash} dark={dark} themePref={themePref} onToggleTheme={cycleTheme}
             openGen={openGen} active={focused} lang={curLang} toggleLang={toggleLang}
-            version={version} balance={balance} trayMode={trayMode} onToggleTrayMode={toggleTrayMode}
+            version={version} balance={balance} keyMissing={keyMissing} onSetKey={handleSetKey}
+            trayMode={trayMode} onToggleTrayMode={toggleTrayMode}
             dayMode={dayMode} onDayModeChange={changeDayMode}
             onRefresh={() => fetchDashboard().then(applyDash)} />}
     </I18nContext.Provider>
