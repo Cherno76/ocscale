@@ -67,6 +67,17 @@ function panelBackground(dark: boolean, t: Theme): string {
   return isMac ? (dark ? "rgba(31,34,38,0.84)" : "rgba(255,255,255,0.80)") : t.card;
 }
 
+// Balance in the current interface currency: the English UI shows everything
+// in USD (cost included), so a CNY balance is converted at the fixed rate the
+// ZH UI uses (¥7.2/$1); the Chinese UI keeps the raw ¥ amount.
+function fmtBalance(b: BalanceInfo, lang: Lang, tr: Dict): string {
+  if (b.currency === "CNY") {
+    return lang === "en" ? fmtMoney(b.totalBalance / tr.cnyPerUsd, "$") : fmtMoney(b.totalBalance, "¥");
+  }
+  if (b.currency === "USD") return fmtMoney(b.totalBalance, "$");
+  return fmtMoney(b.totalBalance, b.currency + " ");
+}
+
 // Round each value's share to 1 decimal (%) via largest-remainder apportionment,
 // so the displayed percentages sum to exactly 100.0% (plain rounding wouldn't).
 function ProjectRow({ p, max, theme, share }: { p: ProjectStat; max: number; theme: Theme; share: number }) {
@@ -475,8 +486,6 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
   const [shotBusy, setShotBusy] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const toastTimer = useRef<number | null>(null);
-  // ¥ for CNY, $ for USD, otherwise the currency code itself.
-  const balSym = balance ? (balance.currency === "CNY" ? "¥" : balance.currency === "USD" ? "$" : balance.currency + " ") : "";
   const showToast = (msg: string, ok: boolean) => {
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
     setToast({ msg, ok });
@@ -699,7 +708,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
                 <div style={{ font: `600 ${t.fs.label}px ${t.ui}`, color: t.dim }}>{tr.estCost}</div>
                 <div style={{ font: `700 22px/1 ${t.mono}`, color: t.accent, marginTop: 5 }}>{tr.currencySymbol}{(M.cost * tr.exchangeRate).toFixed(2)}</div>
                 <div style={{ font: `500 ${t.fs.small}px ${t.mono}`, color: t.faint, marginTop: 5, display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
-                  {tr.balance} {balance ? fmtMoney(balance.totalBalance, balSym) : tr.costDash}
+                  {tr.balance} {balance ? fmtBalance(balance, lang, tr) : tr.costDash}
                   <Switch on={trayMode === "balance"} theme={t} onClick={onToggleTrayMode} title={tr.trayModeHint} />
                 </div>
               </div>

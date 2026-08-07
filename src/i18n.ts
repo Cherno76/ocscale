@@ -73,6 +73,9 @@ const EN = {
   failedToLoad: "Failed to load:",
   currencySymbol: "$",
   exchangeRate: 1,
+  // DeepSeek reports the balance in CNY; the English UI prices everything in
+  // USD, so convert at the same fixed rate the ZH UI uses for cost (¥7.2/$1).
+  cnyPerUsd: 7.2,
   // Footer
   refresh: "Refresh",
   moreActions: "More actions",
@@ -157,6 +160,7 @@ const ZH: Dict = {
   more: "多",
   currencySymbol: "¥",
   exchangeRate: 7.2,
+  cnyPerUsd: 7.2,
   refresh: "刷新",
   moreActions: "更多操作",
   launchAtLogin: "开机启动",
