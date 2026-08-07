@@ -66,8 +66,11 @@ function panelBackground(dark: boolean, t: Theme): string {
   const isMac = typeof navigator !== "undefined" && navigator.userAgent.includes("Macintosh");
   return isMac
     ? dark
-      ? "linear-gradient(180deg, rgba(46,50,58,0.52), rgba(24,27,33,0.40))"
-      : "linear-gradient(180deg, rgba(255,255,255,0.62), rgba(255,255,255,0.46))"
+      // ~80% opaque: the wallpaper still tints the glass subtly, but dense
+      // 9–12px labels stay readable on any backdrop (Golden Gate's own
+      // readability lesson).
+      ? "linear-gradient(180deg, rgba(38,41,48,0.84), rgba(28,31,36,0.78))"
+      : "linear-gradient(180deg, rgba(255,255,255,0.88), rgba(255,255,255,0.80))"
     : t.card;
 }
 
