@@ -87,13 +87,17 @@ function fmtBalance(b: BalanceInfo, lang: Lang, tr: Dict): string {
 
 // Round each value's share to 1 decimal (%) via largest-remainder apportionment,
 // so the displayed percentages sum to exactly 100.0% (plain rounding wouldn't).
+// Stable per-project color from the macOS palette, shared by the token rows
+// and the cost donut so the same project never changes hue between the two.
+const PROJECT_PALETTE = ["#0a84ff", "#30d158", "#ff9f0a", "#bf5af2", "#ff375f", "#64d2ff", "#ffd60a", "#98989d"];
+function projectColor(projectId: string): string {
+  const hash = projectId.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+  return PROJECT_PALETTE[hash % PROJECT_PALETTE.length];
+}
+
 function ProjectRow({ p, max, theme, share }: { p: ProjectStat; max: number; theme: Theme; share: number }) {
   const pctStr = share % 1 === 0 ? share.toFixed(0) : share.toFixed(1);
-  // macOS system palette — the Golden Gate look pairs each model with a
-  // system hue instead of a single blue ramp.
-  const PALETTE = ["#0a84ff", "#30d158", "#ff9f0a", "#bf5af2", "#ff375f", "#64d2ff", "#ffd60a", "#98989d"];
-  const hash = p.projectId.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
-  const color = PALETTE[hash % PALETTE.length];
+  const color = projectColor(p.projectId);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 0" }}>
       <span style={{ width: 8, height: 8, borderRadius: 3, background: color, flex: "0 0 auto" }} />
@@ -431,7 +435,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
       vendor: "",
       tokens: p.tokens,
       cost: p.cost,
-      color: "",
+      color: projectColor(p.projectId),
       priced: true,
       costSource: "pricing",
     }));
@@ -807,14 +811,14 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
               costModels.length > 0
                 ? <div key={`donut:${period}`} className="om-fade-in">
                     <CostDonut models={costModels} theme={t} size={104} thickness={16}
-                      currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} />
+                      currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} preserveColors />
                   </div>
                 : <div style={{ font: `500 11.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
             ) : costTab === "project" ? (
               projectCostItems.length > 0
                 ? <div key={`donut:${period}`} className="om-fade-in">
                     <CostDonut models={projectCostItems} theme={t} size={104} thickness={16}
-                      currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} />
+                      currencySymbol={tr.currencySymbol} exchangeRate={tr.exchangeRate} preserveColors />
                   </div>
                 : <div style={{ font: `500 11.5px ${t.mono}`, color: t.faint }}>{tr.costDash}</div>
             ) : (

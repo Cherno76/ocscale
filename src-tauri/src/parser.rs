@@ -45,9 +45,10 @@ struct Event {
     session_title: String,
 }
 
-// Top-5 models keep the blue/slate scheme; everything beyond is uniform gray.
-const PALETTE: &[&str] = &["#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#4b5a52"];
-const OVERFLOW_GRAY: &str = "#79817b";
+// Top-5 models keep the macOS system palette (matches the frontend); everything
+// beyond is uniform gray.
+const PALETTE: &[&str] = &["#0a84ff", "#30d158", "#ff9f0a", "#bf5af2", "#98989d"];
+const OVERFLOW_GRAY: &str = "#98989d";
 
 /// Strip a trailing "-YYYYMMDD" date suffix so dated releases merge into
 /// their base model (e.g. "claude-haiku-4-5-20251001" → "claude-haiku-4-5").
