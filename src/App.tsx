@@ -147,8 +147,8 @@ function ModelRow({ m, max, theme, share }: { m: ModelStat; max: number; theme: 
 
 // Elevated KPI card: label row (with optional sparkline / adornment on the
 // right) over a large mono value and a faint sub-line.
-function KpiCard({ label, value, sub, theme, accent, children }:
-  { label: string; value: string; sub?: string; theme: Theme; accent?: string; children?: React.ReactNode }) {
+function KpiCard({ label, value, sub, theme, children }:
+  { label: string; value: string; sub?: string; theme: Theme; children?: React.ReactNode }) {
   const t = theme;
   return (
     <div style={{
@@ -160,7 +160,7 @@ function KpiCard({ label, value, sub, theme, accent, children }:
         <span style={{ font: `600 ${t.fs.label}px ${t.ui}`, color: t.dim, letterSpacing: ".03em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
         {children}
       </div>
-      <div style={{ font: `700 ${t.fs.value}px/1 ${t.mono}`, color: accent || t.text, letterSpacing: "-.01em" }}>{value}</div>
+      <div style={{ font: `700 ${t.fs.value}px/1 ${t.mono}`, color: t.text, letterSpacing: "-.01em" }}>{value}</div>
       {sub && <div style={{ font: `500 ${t.fs.small}px ${t.mono}`, color: t.faint, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div>}
     </div>
   );
@@ -896,11 +896,11 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
               <KpiCard label={tr.requests} value={fmtInt(M.requests)} sub={`${M.sessions} ${tr.sessions}`} theme={t}>
                 <Sparkline values={P.reqTrend.length ? P.reqTrend : [0, 0]} theme={t} width={54} height={22} accent={t.accent} />
               </KpiCard>
-              <KpiCard label={tr.costTrend} value={`${tr.currencySymbol}${(M.cost * tr.exchangeRate).toFixed(2)}`} sub={trendSub} theme={t} accent={t.accent}>
+              <KpiCard label={tr.costTrend} value={`${tr.currencySymbol}${(M.cost * tr.exchangeRate).toFixed(2)}`} sub={trendSub} theme={t}>
                 <Sparkline values={P.costTrend.length ? P.costTrend : [0, 0]} theme={t} width={54} height={22} accent={t.accent} />
               </KpiCard>
-              <KpiCard label={tr.cacheHit} value={`${Math.round(cachePct)}%`} sub={`${tr.cached} · ${fmtTokens(M.cacheTokens)}`} theme={t} accent={t.accentSoft}>
-                <Sparkline values={P.cacheTrend?.length ? P.cacheTrend : [0, 0]} theme={t} width={54} height={22} accent={t.accentSoft} />
+              <KpiCard label={tr.cacheHit} value={`${Math.round(cachePct)}%`} sub={`${tr.cached} · ${fmtTokens(M.cacheTokens)}`} theme={t}>
+                <Sparkline values={P.cacheTrend?.length ? P.cacheTrend : [0, 0]} theme={t} width={54} height={22} accent={t.accent} />
               </KpiCard>
               <KpiCard label={tr.avgPerReq} value={`${tr.currencySymbol}${avgPerReqStr}`} sub={tr.estCost} theme={t} />
             </div>
