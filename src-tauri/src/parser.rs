@@ -668,7 +668,24 @@ fn report_day(events: &[Event], now: DateTime<Local>, utc_day: bool) -> PeriodRe
         projects,
         req_trend: req_b,
         cost_trend: cost_b,
+        cache_trend: cache_hit_pct(&buckets),
     }
+}
+
+/// Cache-hit percentage per bucket (cache ÷ total tokens × 100). Buckets with
+/// no tokens report 0, which the sparkline renders as a flat floor.
+fn cache_hit_pct(buckets: &[(f64, f64, f64, f64)]) -> Vec<f64> {
+    buckets
+        .iter()
+        .map(|(input, cache, output, reasoning)| {
+            let tot = input + cache + output + reasoning;
+            if tot > 0.0 {
+                (cache / tot) * 100.0
+            } else {
+                0.0
+            }
+        })
+        .collect()
 }
 
 // ── Week report: current calendar week (Mon-Sun) vs previous week ────
@@ -748,6 +765,7 @@ fn report_week(events: &[Event], now: DateTime<Local>, offset: i64) -> PeriodRep
         projects,
         req_trend: req_b,
         cost_trend: cost_b,
+        cache_trend: cache_hit_pct(&buckets),
     }
 }
 
@@ -843,6 +861,7 @@ fn report_month(events: &[Event], now: DateTime<Local>, offset: i64) -> PeriodRe
         projects,
         req_trend: req_b,
         cost_trend: cost_b,
+        cache_trend: cache_hit_pct(&buckets),
     }
 }
 
