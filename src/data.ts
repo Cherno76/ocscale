@@ -121,7 +121,9 @@ export const TH: Record<"dark" | "light", Theme> = {
     segBg: "rgba(255,255,255,0.10)", segBorder: "rgba(255,255,255,0.16)",
     segOnBg: "linear-gradient(180deg, rgba(255,255,255,0.26), rgba(255,255,255,0.12))",
     segOnText: "#fff", segOffText: "rgba(255,255,255,0.62)",
-    segOnShadow: "inset 0 1px 0 rgba(255,255,255,0.38), 0 2px 6px rgba(0,0,0,0.28)",
+    // Inset highlight only — a drop shadow on the selected pill reads as a
+    // gray smudge on light panels.
+    segOnShadow: "inset 0 1px 0 rgba(255,255,255,0.38)",
     tip: "#34383d",
     fs: { label: 11, small: 10.5, body: 12, value: 20, hero: 40 },
     sp: { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 },
@@ -143,7 +145,7 @@ export const TH: Record<"dark" | "light", Theme> = {
     segBg: "rgba(255,255,255,0.55)", segBorder: "rgba(0,0,0,0.10)",
     segOnBg: "linear-gradient(180deg, rgba(255,255,255,0.95), rgba(255,255,255,0.70))",
     segOnText: "#111", segOffText: "rgba(0,0,0,0.55)",
-    segOnShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 3px rgba(0,0,0,0.16)",
+    segOnShadow: "inset 0 1px 0 rgba(255,255,255,0.9)",
     tip: "#2b2f36",
     fs: { label: 11, small: 10.5, body: 12, value: 20, hero: 40 },
     sp: { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 },

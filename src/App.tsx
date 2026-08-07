@@ -176,7 +176,8 @@ function KpiCard({ label, value, sub, theme, children }:
   return (
     <div style={{
       background: t.surface, border: `1px solid ${t.border}`, borderRadius: t.r.md,
-      boxShadow: `inset 0 1px 0 ${t.hi}, 0 2px 8px rgba(0,0,0,0.16)`,
+      // Inset highlight only; the outer drop shadow showed as gray on light.
+      boxShadow: `inset 0 1px 0 ${t.hi}`,
       padding: "11px 12px", minWidth: 0,
     }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginBottom: 7 }}>
@@ -789,7 +790,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
             {keyOpen && (
               <div style={{
                 background: t.surface, border: `1px solid ${t.border}`, borderRadius: t.r.md,
-                boxShadow: `inset 0 1px 0 ${t.hi}, 0 2px 8px rgba(0,0,0,0.16)`,
+                boxShadow: `inset 0 1px 0 ${t.hi}`,
                 padding: 10, marginBottom: 10,
               }}>
                 <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 7 }}>
