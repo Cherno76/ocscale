@@ -451,10 +451,11 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
   // Hide noise: 0% token-share rows, and $0 entries in the cost donut.
   // Show models whose share is at least 0.1% when rounded to 1 decimal; below
   // that it'd render a meaningless "0.0%" (a negligible token share). Such a
-  // model can still appear under Cost if it has a non-zero cost.
+  // model can still appear under Cost if it has a non-zero cost. Cap the list
+  // at the top 3 models by token count to keep the panel compact.
   const tokenModels = models.filter(
     (m) => Math.round((m.tokens / (M.totalTokens || 1)) * 1000) / 10 >= 0.1
-  );
+  ).slice(0, 3);
   const costModels = models.filter((m) => m.cost > 0);
   const projectCostItems: ModelStat[] = P.projects
     .filter(p => p.cost > 0)
@@ -473,16 +474,20 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
   // Per-row shares that sum to exactly 100.0% (largest-remainder over visible rows).
   const tokenShares = sharePcts(tokenModels.map((m) => m.tokens));
 
-  // Project token rows — same filtering and share logic as model rows.
+  // Project token rows — same filtering and share logic as model rows, capped
+  // at the top 3 projects by token count.
   const projectTokens = P.projects.filter(
     (p) => Math.round((p.tokens / (M.totalTokens || 1)) * 1000) / 10 >= 0.1
-  );
+  ).slice(0, 3);
   const maxP = Math.max(...projectTokens.map((p) => p.tokens), 1e-9);
   const projectShares = sharePcts(projectTokens.map((p) => p.tokens));
   // Period-scoped agent stats (the Agents tab shows the all-time view).
   const agentStats = P.agents || [];
-  const maxA = Math.max(...agentStats.map((a) => a.tokens), 1e-9);
-  const agentShares = sharePcts(agentStats.map((a) => a.tokens));
+  // Cap the list at the top 3 agents by token count; the donut still covers
+  // every agent with a cost.
+  const topAgents = agentStats.slice(0, 3);
+  const maxA = Math.max(...topAgents.map((a) => a.tokens), 1e-9);
+  const agentShares = sharePcts(topAgents.map((a) => a.tokens));
   // Color by data source (green = OpenCode, orange = Codex), same as the
   // Agents tab; rows and donut share one mapping.
   const agentColors = agentColorsFor(agentStats);
@@ -863,8 +868,8 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
               <Label t={t}>{costTab === "model" ? tr.tokensByModel : costTab === "project" ? tr.byProject : tr.tokensByAgent}</Label>
               <Segmented value={costTab} items={[tr.model, tr.project, tr.byAgent]} itemValues={["model", "project", "agent"]} theme={t} onSelect={(v) => setCostTab(v as "model" | "project" | "agent")} />
             </div>
-            {/* capped token rows (~6 rows): the list itself scrolls when there
-                are more models/projects/agents, keeping the panel compact */}
+            {/* top-3 token rows: each breakdown list shows only the three
+                largest entries by token count, keeping the panel compact */}
             <div className="om-nobar" style={{ maxHeight: 180, overflowY: "auto" }}>
               {costTab === "model" ? (
                 <>
@@ -878,8 +883,8 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
                 </>
               ) : (
                 <>
-                  {agentStats.length === 0 && <div style={{ font: `500 11.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
-                  {agentStats.map((a, i) => <AgentRow key={i} a={a} max={maxA} theme={t} share={agentShares[i]} color={agentColorOf(a)} />)}
+                  {topAgents.length === 0 && <div style={{ font: `500 11.5px ${t.mono}`, color: t.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>}
+                  {topAgents.map((a, i) => <AgentRow key={i} a={a} max={maxA} theme={t} share={agentShares[i]} color={agentColorOf(a)} />)}
                 </>
               )}
               {costTab === "model" && unpricedModels.length > 0 && (
