@@ -902,7 +902,9 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
               <KpiCard label={tr.cacheHit} value={`${Math.round(cachePct)}%`} sub={`${tr.cached} · ${fmtTokens(M.cacheTokens)}`} theme={t}>
                 <Sparkline values={P.cacheTrend?.length ? P.cacheTrend : [0, 0]} theme={t} width={54} height={22} accent={t.accent} />
               </KpiCard>
-              <KpiCard label={tr.avgPerReq} value={`${tr.currencySymbol}${avgPerReqStr}`} sub={tr.estCost} theme={t} />
+              <KpiCard label={tr.avgPerReq} value={`${tr.currencySymbol}${avgPerReqStr}`} sub={tr.estCost} theme={t}>
+                <Sparkline values={P.costPerReqTrend?.length ? P.costPerReqTrend : [0, 0]} theme={t} width={54} height={22} accent={t.accent} />
+              </KpiCard>
             </div>
             {/* MCP — shown whenever the user has installed MCP servers */}
             {M.servers > 0 && (

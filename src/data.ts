@@ -18,6 +18,7 @@ export interface PeriodReport {
   metrics: Metrics; series: SeriesPoint[]; models: ModelStat[]; agents: AgentStat[];
   mcp: NamedCount[]; skills: NamedCount[]; reqTrend: number[]; costTrend: number[];
   cacheTrend: number[];
+  costPerReqTrend: number[];
   projects: ProjectStat[];
 }
 export interface HeatDay { date: string; tokens: number; level: number }

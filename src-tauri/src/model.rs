@@ -116,6 +116,8 @@ pub struct PeriodReport {
     pub cost_trend: Vec<f64>,
     #[serde(rename = "cacheTrend")]
     pub cache_trend: Vec<f64>,
+    #[serde(rename = "costPerReqTrend")]
+    pub cost_per_req_trend: Vec<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]

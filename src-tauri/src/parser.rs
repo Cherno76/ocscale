@@ -652,6 +652,7 @@ fn report_day(events: &[Event], now: DateTime<Local>, utc_day: bool) -> PeriodRe
         (agg.cost - projects.iter().map(|p| p.cost).sum::<f64>()).abs() < 0.05,
         "model cost sum != project cost sum"
     );
+    let cost_per_req_trend = cost_per_req(&cost_b, &req_b);
     PeriodReport {
         metrics: agg.metrics(
             pct_delta(
@@ -670,7 +671,17 @@ fn report_day(events: &[Event], now: DateTime<Local>, utc_day: bool) -> PeriodRe
         req_trend: req_b,
         cost_trend: cost_b,
         cache_trend: cache_hit_pct(&buckets),
+        cost_per_req_trend,
     }
+}
+
+/// Cost per request per bucket (0 when a bucket had no requests), for the
+/// "Cost / request" KPI sparkline.
+fn cost_per_req(cost: &[f64], req: &[f64]) -> Vec<f64> {
+    cost.iter()
+        .zip(req)
+        .map(|(c, r)| if *r > 0.0 { c / r } else { 0.0 })
+        .collect()
 }
 
 /// Cache-hit percentage per bucket (cache ÷ total tokens × 100). Buckets with
@@ -749,6 +760,7 @@ fn report_week(events: &[Event], now: DateTime<Local>, offset: i64) -> PeriodRep
         (agg.cost - projects.iter().map(|p| p.cost).sum::<f64>()).abs() < 0.05,
         "model cost sum != project cost sum"
     );
+    let cost_per_req_trend = cost_per_req(&cost_b, &req_b);
     PeriodReport {
         metrics: agg.metrics(
             pct_delta(
@@ -767,6 +779,7 @@ fn report_week(events: &[Event], now: DateTime<Local>, offset: i64) -> PeriodRep
         req_trend: req_b,
         cost_trend: cost_b,
         cache_trend: cache_hit_pct(&buckets),
+        cost_per_req_trend,
     }
 }
 
@@ -845,6 +858,7 @@ fn report_month(events: &[Event], now: DateTime<Local>, offset: i64) -> PeriodRe
         (agg.cost - projects.iter().map(|p| p.cost).sum::<f64>()).abs() < 0.05,
         "model cost sum != project cost sum"
     );
+    let cost_per_req_trend = cost_per_req(&cost_b, &req_b);
     PeriodReport {
         metrics: agg.metrics(
             pct_delta(
@@ -863,6 +877,7 @@ fn report_month(events: &[Event], now: DateTime<Local>, offset: i64) -> PeriodRe
         req_trend: req_b,
         cost_trend: cost_b,
         cache_trend: cache_hit_pct(&buckets),
+        cost_per_req_trend,
     }
 }
 
