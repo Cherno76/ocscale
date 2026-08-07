@@ -24,6 +24,7 @@ const EN = {
   cancel: "Cancel",
   keySaved: "API key saved",
   keyInvalid: "Key looks invalid",
+  balanceRetry: "Balance failed · Retry",
   // Cache split
   cached: "Cached",
   new_: "New",
@@ -138,6 +139,7 @@ const ZH: Dict = {
   cancel: "取消",
   keySaved: "API Key 已保存",
   keyInvalid: "Key 格式不正确",
+  balanceRetry: "余额获取失败 · 重试",
   cached: "缓存",
   new_: "新增",
   pctCached: "% 命中缓存",

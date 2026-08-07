@@ -964,6 +964,8 @@ fn get_deepseek_key_status() -> String {
 #[tauri::command]
 async fn set_deepseek_key(app: tauri::AppHandle, key: String) -> Result<(), String> {
     balance::save_stored_key(&key)?;
+    // A keyless failure may be cached — drop it so the balance refetches now.
+    balance::invalidate_cache();
     let app2 = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let dash = parser::build_dashboard_with_mode(utc_day_enabled());
@@ -978,6 +980,7 @@ async fn set_deepseek_key(app: tauri::AppHandle, key: String) -> Result<(), Stri
 #[tauri::command]
 fn clear_deepseek_key() {
     balance::clear_stored_key();
+    balance::invalidate_cache();
 }
 
 /// Current tray label mode: "tokens" or "balance".

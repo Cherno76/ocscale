@@ -52,6 +52,11 @@ static CACHE: OnceLock<Mutex<Option<(Instant, Option<BalanceInfo>)>>> = OnceLock
 
 /// Cached balance; `None` when unavailable (no key / network / API error).
 pub fn balance() -> Option<BalanceInfo> {
+    // No key → fail fast WITHOUT caching, so setting a key later takes effect
+    // immediately (a cached keyless failure would otherwise linger for 5 min).
+    let Some(key) = api_key() else {
+        return None;
+    };
     let lock = CACHE.get_or_init(|| Mutex::new(None));
     let mut g = lock.lock().unwrap_or_else(|e| e.into_inner());
     if let Some((at, cached)) = g.as_ref() {
@@ -59,9 +64,18 @@ pub fn balance() -> Option<BalanceInfo> {
             return cached.clone();
         }
     }
-    let result = api_key().and_then(|k| fetch_balance(&k));
+    let result = fetch_balance(&key);
     *g = Some((Instant::now(), result.clone()));
     result
+}
+
+/// Drop the cached balance so the next call refetches (used after the key is
+/// saved or cleared).
+pub fn invalidate_cache() {
+    if let Some(g) = CACHE.get() {
+        let mut g = g.lock().unwrap_or_else(|e| e.into_inner());
+        *g = None;
+    }
 }
 
 fn fetch_balance(key: &str) -> Option<BalanceInfo> {

@@ -318,8 +318,8 @@ function MenuItem({ theme, onClick, danger, disabled, ariaLabel, children, right
   );
 }
 
-function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, toggleLang, onRefresh, version, balance, keyMissing, onSetKey, trayMode, onToggleTrayMode, dayMode, onDayModeChange }:
-  { dash: Dashboard; dark: boolean; themePref: "dark" | "light" | "system"; onToggleTheme: () => void; openGen: number; active: boolean; lang: Lang; toggleLang: () => void; onRefresh: () => void; version: string; balance: BalanceInfo | null; keyMissing: boolean; onSetKey: (key: string) => Promise<boolean>; trayMode: "tokens" | "balance"; onToggleTrayMode: () => void; dayMode: "local" | "utc"; onDayModeChange: (m: "local" | "utc") => void }) {
+function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, toggleLang, onRefresh, version, balance, keyMissing, onSetKey, balanceFailed, onRetryBalance, trayMode, onToggleTrayMode, dayMode, onDayModeChange }:
+  { dash: Dashboard; dark: boolean; themePref: "dark" | "light" | "system"; onToggleTheme: () => void; openGen: number; active: boolean; lang: Lang; toggleLang: () => void; onRefresh: () => void; version: string; balance: BalanceInfo | null; keyMissing: boolean; onSetKey: (key: string) => Promise<boolean>; balanceFailed: boolean; onRetryBalance: () => void; trayMode: "tokens" | "balance"; onToggleTrayMode: () => void; dayMode: "local" | "utc"; onDayModeChange: (m: "local" | "utc") => void }) {
   const t = TH[dark ? "dark" : "light"];
   const { t: tr } = useT();
   const panelBg = panelBackground(dark, t);
@@ -749,6 +749,11 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
                       font: `600 9.5px ${t.mono}`, color: t.accent, background: `${t.accent}22`,
                       border: `1px solid ${t.accent}55`, borderRadius: t.r.sm, padding: "2px 7px", cursor: "pointer",
                     }}>{tr.setApiKey}</button>
+                  ) : balanceFailed ? (
+                    <button onClick={onRetryBalance} title={tr.balanceRetry} style={{
+                      font: `600 9.5px ${t.mono}`, color: t.danger, background: `${t.danger}1f`,
+                      border: `1px solid ${t.danger}44`, borderRadius: t.r.sm, padding: "2px 7px", cursor: "pointer",
+                    }}>{tr.balanceRetry}</button>
                   ) : tr.costDash}
                   <Switch on={trayMode === "balance"} theme={t} onClick={onToggleTrayMode} title={tr.trayModeHint} />
                 </div>
@@ -1165,6 +1170,7 @@ export default function App() {
   const [err, setErr] = useState<string | null>(null);
   const [version, setVersion] = useState("");
   const [balance, setBalance] = useState<BalanceInfo | null>(null);
+  const [balanceFailed, setBalanceFailed] = useState(false);
   const [keyMissing, setKeyMissing] = useState(false);
   const [trayMode, setTrayMode] = useState<"tokens" | "balance">("tokens");
   const [dayMode, setDayMode] = useState<"local" | "utc">("local");
@@ -1218,11 +1224,19 @@ export default function App() {
     try {
       await invoke("set_deepseek_key", { key });
       setKeyMissing(false);
-      invoke<BalanceInfo>("get_balance").then(setBalance).catch(() => {});
+      refreshBalance();
       return true;
     } catch {
       return false;
     }
+  };
+  const refreshBalance = () => {
+    invoke<BalanceInfo>("get_balance")
+      .then((b) => {
+        setBalance(b);
+        setBalanceFailed(b === null);
+      })
+      .catch(() => setBalanceFailed(true));
   };
 
   useEffect(() => {
@@ -1232,7 +1246,7 @@ export default function App() {
     const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
     if (inTauri) {
       invoke<string>("get_version").then(setVersion).catch(() => {});
-      invoke<BalanceInfo>("get_balance").then(setBalance).catch(() => {});
+      refreshBalance();
       invoke<string>("get_tray_mode").then((m) => setTrayMode(m === "balance" ? "balance" : "tokens")).catch(() => {});
       invoke<string>("get_day_mode").then((m) => setDayMode(m === "utc" ? "utc" : "local")).catch(() => {});
       // Seed the Rust-side language pref from the saved panel language so the
@@ -1271,7 +1285,7 @@ export default function App() {
         if (focused) {
           setOpenGen((g) => g + 1); // re-run the count-up on each open
           fetchDashboard().then(applyDash).catch(() => {});
-          invoke<BalanceInfo>("get_balance").then(setBalance).catch(() => {});
+          refreshBalance();
           invoke<string>("get_deepseek_key_status")
             .then((s) => setKeyMissing(s !== "configured"))
             .catch(() => {});
@@ -1327,6 +1341,7 @@ export default function App() {
         : <Panel dash={dash} dark={dark} themePref={themePref} onToggleTheme={cycleTheme}
             openGen={openGen} active={focused} lang={curLang} toggleLang={toggleLang}
             version={version} balance={balance} keyMissing={keyMissing} onSetKey={handleSetKey}
+            balanceFailed={balanceFailed} onRetryBalance={refreshBalance}
             trayMode={trayMode} onToggleTrayMode={toggleTrayMode}
             dayMode={dayMode} onDayModeChange={changeDayMode}
             onRefresh={() => fetchDashboard().then(applyDash)} />}
