@@ -112,6 +112,19 @@ fn mcp_server_from_namespace(namespace: &str) -> Option<String> {
     }
 }
 
+/// Fallback for MCP-bridge tools that the transcript records *without* a
+/// `namespace: mcp__…` marker (e.g. the desktop app's built-in resource
+/// tools). All of them are attributed to a synthetic "resources" server so the
+/// panel still shows MCP activity from this environment.
+fn mcp_server_from_tool_name(name: &str) -> Option<String> {
+    match name {
+        "list_mcp_resources" | "list_mcp_resource_templates" | "read_mcp_resource" => {
+            Some("resources".to_string())
+        }
+        _ => None,
+    }
+}
+
 /// Memoized Codex events, keyed by transcript file mtimes, so the 30s dashboard
 /// refresh only reparses when a transcript actually changed.
 static CODEX_CACHE: OnceLock<Mutex<Option<(Vec<(PathBuf, SystemTime)>, Arc<Vec<RawEvent>>)>>> =
@@ -307,6 +320,13 @@ fn load_events_from(files: &[PathBuf]) -> Vec<RawEvent> {
                                 v.pointer("/payload/name")
                                     .and_then(|x| x.as_str())
                                     .and_then(mcp_server_from_namespace)
+                            })
+                            .or_else(|| {
+                                // Desktop-app MCP bridge tools carry no
+                                // namespace; recognize them by name.
+                                v.pointer("/payload/name")
+                                    .and_then(|x| x.as_str())
+                                    .and_then(mcp_server_from_tool_name)
                             });
                         if let Some(server) = server {
                             pending_mcp.push(server);
@@ -380,6 +400,23 @@ mod tests {
         assert_eq!(mcp_server_from_namespace("multi_agent_v1"), None);
         assert_eq!(mcp_server_from_namespace("exec_command"), None);
         assert_eq!(mcp_server_from_namespace("mcp__"), None);
+    }
+
+    #[test]
+    fn mcp_tool_name_fallback() {
+        assert_eq!(
+            mcp_server_from_tool_name("list_mcp_resources"),
+            Some("resources".to_string())
+        );
+        assert_eq!(
+            mcp_server_from_tool_name("read_mcp_resource"),
+            Some("resources".to_string())
+        );
+        assert_eq!(
+            mcp_server_from_tool_name("list_mcp_resource_templates"),
+            Some("resources".to_string())
+        );
+        assert_eq!(mcp_server_from_tool_name("exec_command"), None);
     }
 
     /// Machine-specific: requires real `~/.codex` transcripts on this machine.
