@@ -1080,12 +1080,14 @@ export default function App() {
     const saved = typeof localStorage !== "undefined" ? localStorage.getItem("ocscale-lang") : null;
     return saved === "zh" ? "zh" : "en";
   });
-  const toggleLang = () =>
-    setCurLang((p) => {
-      const n = p === "en" ? "zh" : "en";
-      try { localStorage.setItem("ocscale-lang", n); } catch {}
-      return n;
-    });
+  const toggleLang = () => {
+    const n = curLang === "en" ? "zh" : "en";
+    try { localStorage.setItem("ocscale-lang", n); } catch {}
+    setCurLang(n);
+    // Keep the Rust-side language pref in sync so the tray balance label
+    // formats in the same currency as the panel.
+    invoke("set_lang", { lang: n }).catch(() => {});
+  };
   const tr = DICT[curLang];
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -1149,6 +1151,9 @@ export default function App() {
       invoke<BalanceInfo>("get_balance").then(setBalance).catch(() => {});
       invoke<string>("get_tray_mode").then((m) => setTrayMode(m === "balance" ? "balance" : "tokens")).catch(() => {});
       invoke<string>("get_day_mode").then((m) => setDayMode(m === "utc" ? "utc" : "local")).catch(() => {});
+      // Seed the Rust-side language pref from the saved panel language so the
+      // tray label matches the interface from the first launch.
+      invoke("set_lang", { lang: curLang }).catch(() => {});
     } else {
       setVersion("dev");
     }

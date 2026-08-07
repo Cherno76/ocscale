@@ -252,6 +252,41 @@ fn utc_day_enabled() -> bool {
     load_day_mode() == DayMode::Utc
 }
 
+// ── Panel language (en/zh) ─────────────────────────────────────────
+// Persisted in the data dir so the Rust-side tray label can format the
+// balance in the same currency as the panel. The frontend syncs this on
+// startup and every time the user toggles the language.
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum LangPref {
+    En,
+    Zh,
+}
+
+fn lang_pref_path() -> Option<std::path::PathBuf> {
+    let dir = dirs::data_dir()?.join("ocscale");
+    let _ = std::fs::create_dir_all(&dir);
+    Some(dir.join("lang.json"))
+}
+
+fn load_lang() -> LangPref {
+    let Some(p) = lang_pref_path() else {
+        return LangPref::En;
+    };
+    std::fs::read_to_string(p)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or(LangPref::En)
+}
+
+fn save_lang(l: LangPref) {
+    if let Some(p) = lang_pref_path() {
+        if let Ok(t) = serde_json::to_string(&l) {
+            let _ = std::fs::write(p, t);
+        }
+    }
+}
+
 /// Bring the OS launch-at-login registration in line with the saved preference,
 /// returning the effective preference (used to seed the menu checkbox). First
 /// run (no saved pref) defaults to on and records it; thereafter we honor the
@@ -941,6 +976,26 @@ async fn set_tray_mode(app: tauri::AppHandle, mode: String) -> Result<String, St
     Ok(tray_mode_name(m))
 }
 
+/// Persist the panel language so the Rust-side tray label can format the
+/// balance in the same currency as the panel, then re-label right away.
+#[tauri::command]
+async fn set_lang(app: tauri::AppHandle, lang: String) -> Result<String, String> {
+    let l = match lang.as_str() {
+        "en" => LangPref::En,
+        "zh" => LangPref::Zh,
+        _ => return Err("lang must be \"en\" or \"zh\"".to_string()),
+    };
+    save_lang(l);
+    let app2 = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let dash = parser::build_dashboard_with_mode(utc_day_enabled());
+        update_tray_label(&app2, &dash);
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(lang)
+}
+
 /// Current day-boundary mode: "local" (calendar day) or "utc" (platform day).
 #[tauri::command]
 fn get_day_mode() -> String {
@@ -993,8 +1048,13 @@ fn fmt_tokens_m(m: f64) -> String {
 }
 
 /// Compact tray label for a balance (¥ for CNY, $ for USD, else the code).
-fn fmt_balance_label(b: &balance::BalanceInfo) -> String {
+/// DeepSeek reports the balance in CNY; the English UI prices everything in
+/// USD at this fixed rate (mirrors the ZH UI's `cost × 7.2` conversion).
+const CNY_PER_USD: f64 = 7.2;
+
+fn fmt_balance_label_with(b: &balance::BalanceInfo, lang: LangPref) -> String {
     let (sym, v) = match b.currency.as_str() {
+        "CNY" if lang == LangPref::En => ("$", b.total_balance / CNY_PER_USD),
         "CNY" => ("¥", b.total_balance),
         "USD" => ("$", b.total_balance),
         other => return format!("{} {:.2}", other, b.total_balance),
@@ -1004,6 +1064,10 @@ fn fmt_balance_label(b: &balance::BalanceInfo) -> String {
     } else {
         format!("{sym}{v:.2}")
     }
+}
+
+fn fmt_balance_label(b: &balance::BalanceInfo) -> String {
+    fmt_balance_label_with(b, load_lang())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1032,7 +1096,7 @@ pub fn run() {
     }
 
     builder
-        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag, get_autostart, set_autostart, quit_app, get_version, get_balance, get_tray_mode, set_tray_mode, get_day_mode, set_day_mode, get_period, fit_panel])
+        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag, get_autostart, set_autostart, quit_app, get_version, get_balance, get_tray_mode, set_tray_mode, get_day_mode, set_day_mode, get_period, fit_panel, set_lang])
         .setup(move |app| {
             // Menu-bar–only app: no Dock icon, runs in the background.
             #[cfg(target_os = "macos")]
@@ -1273,10 +1337,11 @@ mod tests {
             granted_balance: 0.0,
             topped_up_balance: total,
         };
-        assert_eq!(fmt_balance_label(&b(67.38, "CNY")), "¥67.38");
-        assert_eq!(fmt_balance_label(&b(110.0, "USD")), "$110.00");
-        assert_eq!(fmt_balance_label(&b(15000.0, "CNY")), "¥15.0K");
-        assert_eq!(fmt_balance_label(&b(5.5, "EUR")), "EUR 5.50");
+        assert_eq!(fmt_balance_label_with(&b(67.38, "CNY"), LangPref::Zh), "¥67.38");
+        assert_eq!(fmt_balance_label_with(&b(110.0, "CNY"), LangPref::En), "$15.28");
+        assert_eq!(fmt_balance_label_with(&b(110.0, "USD"), LangPref::En), "$110.00");
+        assert_eq!(fmt_balance_label_with(&b(15000.0, "CNY"), LangPref::Zh), "¥15.0K");
+        assert_eq!(fmt_balance_label_with(&b(5.5, "EUR"), LangPref::En), "EUR 5.50");
     }
 
     #[test]
