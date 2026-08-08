@@ -115,6 +115,14 @@ fn load_merged_events() -> Vec<RawEvent> {
     events
 }
 
+/// Raw merged events (OpenCode + Codex), pruned to the heatmap window. Used by
+/// the app's sync module to push new events to the multi-device server. Callers
+/// hold BUILD_LOCK — the sync path runs on a background thread, never inline.
+pub fn raw_events() -> Vec<RawEvent> {
+    let _guard = BUILD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    load_merged_events()
+}
+
 /// Build a single period report at `offset` weeks/months from the current one
 /// (0 = current, −1 = previous …). Used by the panel's ‹ › paging.
 pub fn period_report(period: &str, offset: i64) -> Option<PeriodReport> {
@@ -238,9 +246,11 @@ fn compute_event(r: &RawEvent, cfg: &UserConfig, pricing: &Pricing) -> Event {
     } else {
         (None, "none")
     };
-    let mcp = if r.source == "codex" {
-        // Codex feasibility prototype: `mcp__`-prefixed tool names are already
-        // user-configured servers by definition, so skip the OpenCode whitelist.
+    // MCP/Skill whitelisting: a device-side store only records *configured*
+    // MCP servers and Codex events are pre-classified via `mcp__` namespaces.
+    // An empty whitelist (e.g. the sync server aggregating events pushed from
+    // other machines) means "trust the event's classification as-is".
+    let mcp = if cfg.mcp_servers.is_empty() || r.source == "codex" {
         r.mcp.clone()
     } else {
         r.mcp
@@ -249,12 +259,18 @@ fn compute_event(r: &RawEvent, cfg: &UserConfig, pricing: &Pricing) -> Event {
             .cloned()
             .collect()
     };
-    let skills = r
-        .skills
-        .iter()
-        .filter(|s| cfg.is_user_skill(s))
-        .map(|s| s.rsplit(':').next().unwrap_or(s).to_string())
-        .collect();
+    let skills = if cfg.skills.is_empty() {
+        r.skills
+            .iter()
+            .map(|s| s.rsplit(':').next().unwrap_or(s).to_string())
+            .collect()
+    } else {
+        r.skills
+            .iter()
+            .filter(|s| cfg.is_user_skill(s))
+            .map(|s| s.rsplit(':').next().unwrap_or(s).to_string())
+            .collect()
+    };
     Event {
         ts,
         session: r.session.clone(),

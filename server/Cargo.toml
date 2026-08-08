@@ -1,0 +1,17 @@
+[package]
+name = "ocscale-server"
+version = "0.1.0"
+edition = "2021"
+description = "OCScale multi-device sync server: ingest RawEvents from many machines, aggregate into one Dashboard"
+
+[[bin]]
+name = "ocscale-server"
+path = "src/main.rs"
+
+[dependencies]
+ocscale-core = { path = "../core" }
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

@@ -135,7 +135,7 @@ question, webfetch, websearch_web_search_exa
 #### 价格数据源（分层，高优先级先命中）
 1. models.dev（主源，官方裸模型名价格）
 2. LiteLLM 在线表（补 models.dev 缺口）
-3. 内置 LiteLLM 快照（离线兜底，`src-tauri/snapshots/litellm.json`）
+3. 内置 LiteLLM 快照（离线兜底，`core/snapshots/litellm.json`）
 4. 硬编码的少量 Anthropic 模型（最后兜底）
 
 缓存：平台 cache 目录 `ocscale/`（macOS 为 `~/Library/Caches/ocscale/`），24h 有效；

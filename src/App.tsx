@@ -342,6 +342,128 @@ function MenuItem({ theme, onClick, danger, disabled, ariaLabel, children, right
   );
 }
 
+/// Multi-device sync settings (方案二: server-side aggregation). This machine
+/// pushes its RawEvents to the central ocscale-server; the token is sent to
+/// Rust and never echoed back to the UI.
+interface SyncStatusT {
+  enabled: boolean;
+  url: string;
+  hasToken: boolean;
+  deviceId: string;
+  lastSyncMs: number | null;
+  lastError: string | null;
+  pendingEvents: number;
+}
+
+function SyncPanel({ t, tr }: { t: Theme; tr: Dict }) {
+  const [enabled, setEnabled] = useState(false);
+  const [url, setUrl] = useState("");
+  const [token, setToken] = useState("");
+  const [hasToken, setHasToken] = useState(false);
+  const [deviceId, setDeviceId] = useState("");
+  const [lastSyncMs, setLastSyncMs] = useState<number | null>(null);
+  const [lastError, setLastError] = useState<string | null>(null);
+  const [pending, setPending] = useState(0);
+  const [busy, setBusy] = useState(false);
+
+  const apply = (s: SyncStatusT) => {
+    setEnabled(s.enabled);
+    setUrl(s.url);
+    setHasToken(s.hasToken);
+    setDeviceId(s.deviceId);
+    setLastSyncMs(s.lastSyncMs);
+    setLastError(s.lastError);
+    setPending(s.pendingEvents);
+  };
+
+  const refresh = () => {
+    invoke<SyncStatusT>("get_sync_config").then(apply).catch(() => {});
+  };
+  useEffect(() => { refresh(); }, []);
+
+  const save = (nextEnabled: boolean) => {
+    setBusy(true);
+    invoke<SyncStatusT>("set_sync_config", { url, token, enabled: nextEnabled })
+      .then(apply)
+      .catch((e) => setLastError(String(e)))
+      .finally(() => { setBusy(false); setToken(""); });
+  };
+
+  const syncNow = () => {
+    setBusy(true);
+    invoke<SyncStatusT>("trigger_sync")
+      .then(apply)
+      .catch((e) => setLastError(String(e)))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: enabled ? 7 : 0 }}>
+        <span style={{ font: `600 ${t.fs.label}px ${t.ui}`, color: t.dim }}>{tr.syncTitle}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {enabled && pending > 0 && (
+            <span style={{ font: `500 9.5px ${t.mono}`, color: t.faint }}>{tr.syncPending(pending)}</span>
+          )}
+          <Switch on={enabled} theme={t} onClick={() => save(!enabled)} title={tr.syncHint} />
+        </div>
+      </div>
+      {enabled && (
+        <div style={{
+          background: t.surface, border: `1px solid ${t.border}`, borderRadius: t.r.md,
+          boxShadow: `inset 0 1px 0 ${t.hi}`, padding: 9,
+        }}>
+          <input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder={tr.syncServerUrl}
+            aria-label={tr.syncServerUrl}
+            style={{
+              width: "100%", boxSizing: "border-box", background: "rgba(0,0,0,0.18)",
+              border: `1px solid ${t.segBorder}`, borderRadius: t.r.sm, padding: "5px 8px",
+              font: `500 10.5px ${t.mono}`, color: t.text, outline: "none",
+            }}
+          />
+          <div style={{ display: "flex", gap: 7, marginTop: 7 }}>
+            <input
+              type="password"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder={hasToken ? tr.syncTokenSet : tr.syncTokenPlaceholder}
+              aria-label={tr.syncTokenPlaceholder}
+              style={{
+                flex: 1, minWidth: 0, background: "rgba(0,0,0,0.18)", border: `1px solid ${t.segBorder}`,
+                borderRadius: t.r.sm, padding: "5px 8px", font: `500 10.5px ${t.mono}`, color: t.text, outline: "none",
+              }}
+            />
+            <button onClick={() => save(enabled)} disabled={busy} style={{
+              font: `600 10.5px ${t.ui}`, color: "#fff", background: t.accent, border: "none",
+              borderRadius: t.r.sm, padding: "0 12px", cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1,
+            }}>{tr.syncSave}</button>
+            <button onClick={syncNow} disabled={busy} title={tr.syncNow} style={{
+              font: `600 10.5px ${t.ui}`, color: t.dim, background: t.segBg, border: `1px solid ${t.segBorder}`,
+              borderRadius: t.r.sm, padding: "0 10px", cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1,
+            }}>{tr.syncNow}</button>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
+            <span style={{ font: `500 9.5px ${t.mono}`, color: t.faint }}>
+              {tr.syncDevice}: {deviceId}
+            </span>
+            <span style={{ font: `500 9.5px ${t.mono}`, color: lastError ? t.danger : t.faint }}>
+              · {tr.syncLastSync}: {lastSyncMs ? new Date(lastSyncMs).toLocaleTimeString() : tr.syncNever}
+            </span>
+            {lastError && (
+              <span style={{ font: `500 9.5px ${t.mono}`, color: t.danger, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={lastError}>
+                · {lastError}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, toggleLang, onRefresh, version, balance, keyMissing, onSetKey, balanceFailed, onRetryBalance, trayMode, onToggleTrayMode, dayMode, onDayModeChange }:
   { dash: Dashboard; dark: boolean; themePref: "dark" | "light" | "system"; onToggleTheme: () => void; openGen: number; active: boolean; lang: Lang; toggleLang: () => void; onRefresh: () => void; version: string; balance: BalanceInfo | null; keyMissing: boolean; onSetKey: (key: string) => Promise<boolean>; balanceFailed: boolean; onRetryBalance: () => void; trayMode: "tokens" | "balance"; onToggleTrayMode: () => void; dayMode: "local" | "utc"; onDayModeChange: (m: "local" | "utc") => void }) {
   const t = TH[dark ? "dark" : "light"];
@@ -822,6 +944,8 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active, lang, to
                 </div>
               </div>
             )}
+            {/* multi-device sync: push raw events to the central server */}
+            <SyncPanel t={t} tr={tr} />
             {/* cached vs rest (uncached input + output) — 2-colour pill. Dark segment
                 is the cache share, matching the "% cached" label below. */}
             <div style={{ display: "flex", height: 8, borderRadius: 5, overflow: "hidden", marginBottom: 6, background: t.gridLine, boxShadow: "inset 0 1px 1px rgba(0,0,0,0.28)" }}>

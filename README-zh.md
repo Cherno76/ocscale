@@ -121,9 +121,41 @@ pnpm tauri build       # macOS 产出 .app / .dmg，Windows 产出 .exe (NSIS)
 构建，macOS leg 同时更新 Homebrew Cask tap。版本规则见 `AGENTS.md`（每次代码变更
 PATCH +1，三个版本文件保持同步）。
 
+## 多设备同步
+
+在多台设备上运行 OCScale？把它们都指向一台中心 `ocscale-server`，即可得到合并后
+的仪表盘（方案二：服务器端聚合，每台设备只负责推送）：
+
+```bash
+# 在你有公网 IP 的服务器上
+OCSCALE_TOKEN=<共享密钥> \
+OCSCALE_ADDR=0.0.0.0:8787 \
+OCSCALE_DB=/var/lib/ocscale/server.db \
+cargo run --release -p ocscale-server
+```
+
+- 每台设备每 30s 把新增 RawEvent 推送到 `POST /api/events`；以 `(source, id)` 幂等
+  去重，断网重试不会重复计数。
+- 服务器把事件存进 SQLite，并通过 `GET /api/dashboard?utc_day=true|false` 输出合并
+  仪表盘，聚合逻辑与 App 完全一致（同一套 parser + 价格表）。
+- App 内开启：概览页 → **多设备同步** → 填服务器地址和 Token，打开开关。Token 以
+  0600 权限本地保存，之后不再回显。
+- 公网部署建议放在 TLS 反向代理后面（Caddy 自动证书最省事——Let's Encrypt 不给
+  纯 IP 签证书）。鉴权用共享 Bearer Token（`OCSCALE_TOKEN`），每台设备还会上报
+  稳定的 `device_id` 便于区分机器。
+- 接口：`POST /api/events`、`GET /api/dashboard`、`GET /api/health`。
+
 ## 结构
 
 ```
+core/                 ocscale-core crate — 共享聚合核心（RawEvent → Dashboard）
+  store.rs            OpenCode SQLite → RawEvent（+ 工具调用分类）
+  store_codex.rs      Codex transcripts → RawEvent
+  parser.rs           聚合（Day/Week/Month + 热力图）
+  pricing.rs          models.dev / LiteLLM 价格加载与计价
+  config.rs           用户 MCP / Skill 白名单
+  model.rs            返回给前端的数据结构
+server/               ocscale-server crate — 多设备事件仓库 + 合并仪表盘 API
 src/                  React 前端（5 个文件）
   data.ts             类型 + Tauri 桥 + 主题 + 格式化
   charts.tsx          图表原语（柱状 / 甜甜圈 / sparkline / 热力图 / 分段控件）
@@ -131,13 +163,10 @@ src/                  React 前端（5 个文件）
   i18n.ts             EN/ZH 词典
   main.tsx            入口
 
-src-tauri/src/        Rust 后端（7 个文件）
-  store.rs            OpenCode SQLite → RawEvent（+ 工具调用分类）
-  parser.rs           聚合（Day/Week/Month + 热力图）
-  pricing.rs          models.dev / LiteLLM 价格加载与计价
-  config.rs           用户 MCP / Skill 白名单
-  model.rs            返回给前端的数据结构
+src-tauri/src/        Rust App 后端
   lib.rs              Tauri 命令 + 菜单栏托盘 + NSPanel
+  sync.rs             多设备推送（设备 ID、水印、配置）
+  balance.rs          DeepSeek 余额
   main.rs             入口
 ```
 

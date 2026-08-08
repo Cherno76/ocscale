@@ -5,10 +5,11 @@
 // the daily chart, unlike per-session aggregates which lump all tokens into
 // one time bucket.
 use rusqlite::{Connection, OpenFlags};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RawEvent {
     pub ts_ms: i64,
     pub session: String,

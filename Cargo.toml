@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+members = ["core", "server", "src-tauri"]
+
+# Shared release profile for all workspace crates (was previously scoped to the
+# app; a workspace must define profiles at its root).
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

@@ -1,6 +1,6 @@
 [package]
 name = "ocscale"
-version = "0.6.26"
+version = "0.6.27"
 description = "OpenCode token usage dashboard"
 authors = ["you"]
 edition = "2021"
@@ -13,6 +13,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+ocscale-core = { path = "../core" }
 tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
 # decode the base64 PNG body of a screenshot data URL (see save_screenshot)
 base64 = "0.22"
@@ -33,10 +34,3 @@ tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2"
 window-vibrancy = "0.8"
 # Type for the WKWebView pointer handed to apply_liquid_glass.
 objc2-app-kit = "0.3"
-
-[profile.release]
-panic = "abort"
-codegen-units = 1
-lto = true
-opt-level = "s"
-strip = true

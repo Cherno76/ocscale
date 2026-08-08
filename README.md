@@ -131,9 +131,43 @@ with a `v*` tag; the macOS leg also updates the Homebrew Cask tap. See `AGENTS.m
 the versioning rules (every code change bumps PATCH; the three version files stay in
 sync).
 
+## Multi-device sync
+
+Running OCScale on several machines? Point each one at a central `ocscale-server`
+and get one merged dashboard (server-side aggregation — each device only pushes):
+
+```bash
+# on your public-IP server
+OCSCALE_TOKEN=<shared-secret> \
+OCSCALE_ADDR=0.0.0.0:8787 \
+OCSCALE_DB=/var/lib/ocscale/server.db \
+cargo run --release -p ocscale-server
+```
+
+- Every 30s each device pushes its new RawEvents to `POST /api/events`;
+  idempotent on `(source, id)`, so retries never double-count.
+- The server stores everything in SQLite and serves the merged dashboard at
+  `GET /api/dashboard?utc_day=true|false`, aggregated with the exact same
+  parser + pricing the app uses.
+- In the panel: Overview → **Multi-device sync** → server URL + token, then flip
+  the switch. The token is stored locally with 0600 perms and never shown again.
+- For public access put it behind a TLS reverse proxy (Caddy auto-HTTPS is
+  easiest — Let's Encrypt doesn't issue certificates for bare IPs). Auth is a
+  shared Bearer token (`OCSCALE_TOKEN`); every device also records a stable
+  `device_id` so you can tell machines apart.
+- Endpoints: `POST /api/events`, `GET /api/dashboard`, `GET /api/health`.
+
 ## Structure
 
 ```
+core/                 ocscale-core crate — shared aggregation (RawEvent → Dashboard)
+  store.rs            OpenCode SQLite → RawEvent (+ tool-call classification)
+  store_codex.rs      Codex transcripts → RawEvent
+  parser.rs           aggregation (Day/Week/Month + heatmap)
+  pricing.rs          models.dev / LiteLLM price loading and costing
+  config.rs           user MCP / Skill whitelist
+  model.rs            data structures returned to the frontend
+server/               ocscale-server crate — multi-device event store + merged dashboard API
 src/                  React frontend (5 files)
   data.ts             types + Tauri bridge + theme + formatting
   charts.tsx          chart primitives (bars / donut / sparkline / heatmap / segmented)
@@ -141,13 +175,10 @@ src/                  React frontend (5 files)
   i18n.ts             EN/ZH dictionaries
   main.tsx            entry
 
-src-tauri/src/        Rust backend (7 files)
-  store.rs            OpenCode SQLite → RawEvent (+ tool-call classification)
-  parser.rs           aggregation (Day/Week/Month + heatmap)
-  pricing.rs          models.dev / LiteLLM price loading and costing
-  config.rs           user MCP / Skill whitelist
-  model.rs            data structures returned to the frontend
+src-tauri/src/        Rust app backend
   lib.rs              Tauri commands + menu-bar tray + NSPanel
+  sync.rs             multi-device push (device id, watermark, config)
+  balance.rs          DeepSeek balance
   main.rs             entry
 ```
 

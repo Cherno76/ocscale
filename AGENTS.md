@@ -12,11 +12,16 @@ pnpm tauri build                 # production .app/.dmg (macOS) or .exe (Windows
 cargo test -p ocscale         # Rust unit tests (src-tauri/src/lib.rs inline)
 # regenerate dev mock snapshot:
 cd src-tauri && cargo run --example dump > ../public/dev-dashboard.json
+# multi-device sync server (see "Multi-device sync" below):
+OCSCALE_TOKEN=... OCSCALE_ADDR=127.0.0.1:8787 cargo run --release -p ocscale-server
 ```
 
 - `pnpm build` runs `tsc && vite build` — typecheck comes first, then bundle.
 - `strictPort: true` on port 1420 — nothing else should bind that port.
 - There is **no lint/formatter config** (no ESLint, Prettier, or pre-commit hooks).
+- The repo is a Cargo workspace (`core` + `server` + `src-tauri`); the workspace
+  `Cargo.lock` lives at the repo root (not `src-tauri/`), and the shared target
+  dir is `src-tauri/target` (set in `.cargo/config.toml`).
 
 ## Versioning
 
@@ -31,32 +36,42 @@ The frontend reads version dynamically via the `get_version` Tauri command (read
 
 **Auto-commit on minor bump**: when PATCH wraps (0.1.9 → 0.2.0, 0.2.9 → 0.3.0, etc.), commit the version change and push to GitHub automatically — no need to wait for the user to ask. Routine patch bumps (0.1.0 → 0.1.1) are committed alongside the code changes that triggered them.
 
+Keep the root `Cargo.lock` in sync when the version changes (`cargo generate-lockfile`).
+
 ## Architecture
 
 ```
 OpenCode SQLite DB (~/.local/share/opencode/opencode.db)
-    ↓ (store.rs — query_events → RawEvent[], compare-by-value for change detection)
+    ↓ (core/src/store.rs — query_events → RawEvent[], compare-by-value for change detection)
 Codex transcripts (~/.codex/sessions/** + archived_sessions/)
-    ↓ (store_codex.rs — mtime-memoized parse → RawEvent)
-parser.rs::build_dashboard()          ← serialised by BUILD_LOCK (Mutex), merges both sources
-    ├── config.rs                     → MCP/Skill whitelists (opencode.json `mcp` keys + skills dir)
-    └── pricing.rs::Pricing::shared() → Arc memoized, loaded off-main-thread, refreshed every 24h
+    ↓ (core/src/store_codex.rs — mtime-memoized parse → RawEvent)
+ocscale-core parser::build_dashboard() ← serialised by BUILD_LOCK (Mutex), merges both sources
+    ├── core/src/config.rs             → MCP/Skill whitelists (opencode.json `mcp` keys + skills dir)
+    └── core/src/pricing.rs::Pricing::shared() → Arc memoized, loaded off-main-thread, refreshed every 24h
     ↓
-model.rs (Dashboard → serde JSON)
-    ↓ Tauri command get_dashboard()
+core/src/model.rs (Dashboard → serde JSON)
+    ↓ Tauri command get_dashboard() (src-tauri/src/lib.rs)
 src/data.ts (fetchDashboard → auto-detects Tauri vs browser dev mock)
     ↓
 App.tsx + charts.tsx (React, custom SVG charts — no chart library)
+
+Multi-device path: `sync.rs` pushes new RawEvents to `ocscale-server`
+(`POST /api/events`, idempotent on `(source, id)`); the server stores them in
+SQLite and serves the merged Dashboard (`GET /api/dashboard`) using the same
+ocscale-core aggregation.
 ```
 
 **Frontend files** (5): `src/App.tsx`, `charts.tsx`, `data.ts`, `i18n.ts`, `main.tsx`.
 
-**Rust files** (8): `lib.rs` (app setup, tray, commands, 100M celebration), `store.rs` (SQLite→RawEvent), `parser.rs` (aggregation), `pricing.rs` (price loading/cost), `model.rs` (serializable structs), `config.rs` (user MCP/Skill whitelist), `store_codex.rs` (Codex data source — parses `~/.codex` transcripts, merged into `build_dashboard`), `main.rs` (entry).
+**Rust crates**:
+- `core` (ocscale-core): `store.rs` (SQLite→RawEvent), `store_codex.rs` (Codex data source — parses `~/.codex` transcripts), `parser.rs` (aggregation), `pricing.rs` (price loading/cost), `model.rs` (serializable structs), `config.rs` (user MCP/Skill whitelist).
+- `server` (ocscale-server): multi-device event store + `POST /api/events` / `GET /api/dashboard` / `GET /api/health`.
+- `src-tauri` (ocscale app): `lib.rs` (app setup, tray, commands, 100M celebration), `sync.rs` (multi-device push), `balance.rs` (DeepSeek balance), `main.rs` (entry).
 
 ## Data sources & pricing
 
 - **Primary**: OpenCode SQLite database at `$XDG_DATA_HOME/opencode/opencode.db` or `~/.local/share/opencode/opencode.db`.
-- **Pricing**: models.dev API → LiteLLM → built-in snapshot (`src-tauri/snapshots/litellm.json`). Cached at `~/Library/Caches/ocscale/` (macOS) / platform cache dir, refreshed every 24h.
+- **Pricing**: models.dev API → LiteLLM → built-in snapshot (`core/snapshots/litellm.json`). Cached at `~/Library/Caches/ocscale/` (macOS) / platform cache dir, refreshed every 24h.
 - **`deepseek-v4-flash` pricing override** (built into `pricing.rs`): official DeepSeek rates — ¥1/M cache-miss input (cache-write tokens bill at this rate), ¥0.02/M cache hit, ¥2/M output — stored as USD at the zh UI's 7.2 rate so `cost × 7.2` shows exact CNY. Overrides the live LiteLLM entry, which prices cache writes at 0.
 - **MCP/Skill tracking**: implemented for OpenCode. `config.rs` reads user MCP server names from `~/.config/opencode/opencode.json` (`mcp` object keys) and skill names from the `~/.config/opencode/skills/` directory. `store.rs` classifies tool calls from the `part` table: built-in tools are filtered, `{server}_{tool}` names whose prefix matches a configured MCP server count as MCP, and the `skill` tool's `state.input.name` counts as a Skill call.
 - Price matching: exact model name → normalized (strip vendor prefix after `/`, `.`↔`p`). Unmatched models still count tokens but show "no price" label.
@@ -75,7 +90,8 @@ App.tsx + charts.tsx (React, custom SVG charts — no chart library)
 - **Period paging**: the Week/Month views have ‹ › arrows (`get_period` command → `parser::period_report(period, offset)`; offset 0 = current, −1 = previous). Week/month reports take an `offset` param; the paged report is fetched on demand and shown statically while the current period keeps live updates.
 - **NSPanel**: the macOS window is converted to a non-activating NSPanel (level 25 = NSMainMenuWindowLevel + 1) so it floats over fullscreen apps without stealing focus. Panel hides on resign-key, Space change, and app activation.
 - **BUILD_LOCK**: `parser::build_dashboard()` is the single entry point for all data. It holds a Mutex — call it from `spawn_blocking`, never inline on the async runtime.
-- **30s background refresh**: the polling loop in `lib.rs:943-947` calls `refresh()` (build_dashboard + emit + tray update). The tray also refreshes on panel open via `get_dashboard` command.
+- **30s background refresh**: the polling loop in `lib.rs` calls `refresh()` (build_dashboard + emit + tray update). The tray also refreshes on panel open via `get_dashboard` command. A separate sync thread pushes new events to the multi-device server every 30s (first push 5s after launch), guarded by its own mutex and a persisted watermark.
+- **Multi-device sync**: `src-tauri/src/sync.rs` — enabled via the panel (Overview → Multi-device sync). Config (`sync.json` incl. token, 0600), device id, and watermark live in `data_dir/ocscale/`. Commands: `get_sync_config`, `set_sync_config`, `trigger_sync`. Server-side, an empty MCP/Skill whitelist means "trust the event's pre-classified lists", so aggregation works on the server without per-machine config; `servers`/`skills` counts there are approximated from distinct names across merged events.
 - **System theme**: macOS NSPanel doesn't reliably get `prefers-color-scheme`, so an `AppleInterfaceThemeChangedNotification` observer pushes `system-is-dark` to the frontend. On non-macOS, the webview's native `prefers-color-scheme` should work.
 - **Unsigned builds**: no code signing or notarization. macOS users must right-click→Open or `xattr -cr`. Windows gets SmartScreen warning. CI has the secrets commented out — uncommenting them without real secrets will break the build (Tauri's bundler treats empty `APPLE_CERTIFICATE` as "a certificate is present").
 - **CI**: triggers on `git push --tags` with `v*` tag. `fail-fast: false` — macOS and Windows legs are independent. The macOS leg also updates the Homebrew Cask tap.

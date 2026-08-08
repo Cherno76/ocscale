@@ -2,14 +2,10 @@
 #![allow(deprecated, unexpected_cfgs)]
 
 mod balance;
-mod config;
-mod model;
-mod parser;
-mod pricing;
-mod store;
-pub mod store_codex;
+mod sync;
 
-use model::Dashboard;
+use ocscale_core::model::{Dashboard, PeriodReport};
+use ocscale_core::{parser, pricing, store_codex};
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -983,6 +979,46 @@ fn clear_deepseek_key() {
     balance::invalidate_cache();
 }
 
+/// Sync settings + last result for the multi-device panel (never returns the
+/// stored token — only whether one is configured).
+#[tauri::command]
+async fn get_sync_config() -> sync::SyncStatus {
+    tauri::async_runtime::spawn_blocking(sync::status)
+        .await
+        .unwrap_or_else(|_| sync::status())
+}
+
+/// Save the sync server URL / token / enable flag, then push immediately so
+/// the user sees the connection actually work. Stored 0600 like the key.
+#[tauri::command]
+async fn set_sync_config(
+    url: String,
+    token: String,
+    enabled: bool,
+) -> Result<sync::SyncStatus, String> {
+    if enabled && (url.trim().is_empty() || token.trim().is_empty()) {
+        return Err("sync requires a server URL and token".to_string());
+    }
+    sync::save_config(url, token, enabled)?;
+    tauri::async_runtime::spawn_blocking(sync::sync_now)
+        .await
+        .map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(sync::status)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Manually trigger a sync push (settings → "Sync now").
+#[tauri::command]
+async fn trigger_sync() -> Result<sync::SyncStatus, String> {
+    tauri::async_runtime::spawn_blocking(sync::sync_now)
+        .await
+        .map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(sync::status)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Current tray label mode: "tokens" or "balance".
 #[tauri::command]
 fn get_tray_mode() -> String {
@@ -1059,7 +1095,7 @@ async fn set_day_mode(app: tauri::AppHandle, mode: String) -> Result<String, Str
 
 /// One period report at an offset (week/month paging: 0 = current, −1 = previous).
 #[tauri::command]
-async fn get_period(period: String, offset: i64) -> Result<model::PeriodReport, String> {
+async fn get_period(period: String, offset: i64) -> Result<PeriodReport, String> {
     tauri::async_runtime::spawn_blocking(move || {
         parser::period_report(&period, offset).ok_or_else(|| format!("unknown period: {period}"))
     })
@@ -1131,7 +1167,7 @@ pub fn run() {
     }
 
     builder
-        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag, get_autostart, set_autostart, quit_app, get_version, get_balance, get_deepseek_key_status, set_deepseek_key, clear_deepseek_key, get_tray_mode, set_tray_mode, get_day_mode, set_day_mode, get_period, fit_panel, set_lang])
+        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag, get_autostart, set_autostart, quit_app, get_version, get_balance, get_deepseek_key_status, set_deepseek_key, clear_deepseek_key, get_tray_mode, set_tray_mode, get_day_mode, set_day_mode, get_period, fit_panel, set_lang, get_sync_config, set_sync_config, trigger_sync])
         .setup(move |app| {
             // Menu-bar–only app: no Dock icon, runs in the background.
             #[cfg(target_os = "macos")]
@@ -1370,6 +1406,19 @@ pub fn run() {
             std::thread::spawn(move || loop {
                 std::thread::sleep(Duration::from_secs(30));
                 refresh(&handle);
+            });
+
+            // Multi-device sync: push new RawEvents to the configured server.
+            // Its own thread so a slow/unreachable server (up to a 20s HTTP
+            // timeout) never delays the tray refresh loop.
+            std::thread::spawn(move || loop {
+                std::thread::sleep(Duration::from_secs(30));
+                sync::sync_now();
+            });
+            // First push shortly after launch instead of waiting a full cycle.
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_secs(5));
+                sync::sync_now();
             });
 
             // No filesystem watcher needed: the 30s polling loop above is

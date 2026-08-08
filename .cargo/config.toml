@@ -1,0 +1,4 @@
+# Reuse the app's existing build cache and keep Tauri's expected layout
+# (src-tauri/target), which the bundler and incremental builds already use.
+[build]
+target-dir = "src-tauri/target"
