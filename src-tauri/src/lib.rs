@@ -996,9 +996,10 @@ async fn set_sync_config(
     token: String,
     enabled: bool,
 ) -> Result<sync::SyncStatus, String> {
-    if enabled && (url.trim().is_empty() || token.trim().is_empty()) {
-        return Err("sync requires a server URL and token".to_string());
-    }
+    // No validation here: the settings panel only shows the URL/token fields
+    // after the switch is flipped on, so requiring them at this point would
+    // make the toggle impossible to turn on. `sync_now()` already no-ops when
+    // URL or token is empty, so an incomplete config is safe to persist.
     sync::save_config(url, token, enabled)?;
     tauri::async_runtime::spawn_blocking(sync::sync_now)
         .await
