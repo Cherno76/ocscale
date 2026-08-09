@@ -365,6 +365,7 @@ function SyncPanel({ t, tr }: { t: Theme; tr: Dict }) {
   const [lastError, setLastError] = useState<string | null>(null);
   const [pending, setPending] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(true);
 
   const apply = (s: SyncStatusT) => {
     setEnabled(s.enabled);
@@ -399,8 +400,15 @@ function SyncPanel({ t, tr }: { t: Theme; tr: Dict }) {
 
   return (
     <div style={{ marginBottom: 10 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: enabled ? 7 : 0 }}>
-        <span style={{ font: `600 ${t.fs.label}px ${t.ui}`, color: t.dim }}>{tr.syncTitle}</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: enabled && open ? 7 : 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button onClick={() => setOpen(!open)} title={open ? tr.syncCollapse : tr.syncExpand} aria-label={open ? tr.syncCollapse : tr.syncExpand} style={{
+            width: 18, height: 18, borderRadius: t.r.sm, cursor: "pointer", padding: 0,
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            font: `600 9px ${t.mono}`, color: t.dim, background: t.segBg, border: `1px solid ${t.segBorder}`,
+          }} className="om-iconbtn">{open ? "▾" : "▸"}</button>
+          <span style={{ font: `600 ${t.fs.label}px ${t.ui}`, color: t.dim }}>{tr.syncTitle}</span>
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {enabled && pending > 0 && (
             <span style={{ font: `500 9.5px ${t.mono}`, color: t.faint }}>{tr.syncPending(pending)}</span>
@@ -408,7 +416,7 @@ function SyncPanel({ t, tr }: { t: Theme; tr: Dict }) {
           <Switch on={enabled} theme={t} onClick={() => save(!enabled)} title={tr.syncHint} />
         </div>
       </div>
-      {enabled && (
+      {enabled && open && (
         <div style={{
           background: t.surface, border: `1px solid ${t.border}`, borderRadius: t.r.md,
           boxShadow: `inset 0 1px 0 ${t.hi}`, padding: 9,

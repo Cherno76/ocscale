@@ -28,6 +28,8 @@ const EN = {
   // Multi-device sync
   syncTitle: "Multi-device sync",
   syncHint: "Push usage to the central server (multi-device merge)",
+  syncCollapse: "Collapse",
+  syncExpand: "Expand",
   syncServerUrl: "Server URL (https://…/api)",
   syncTokenPlaceholder: "Server token",
   syncTokenSet: "Token saved — type to replace",
@@ -155,6 +157,8 @@ const ZH: Dict = {
   // Multi-device sync
   syncTitle: "多设备同步",
   syncHint: "把用量推送到中心服务器（多设备合并）",
+  syncCollapse: "折叠",
+  syncExpand: "展开",
   syncServerUrl: "服务器地址 (https://…/api)",
   syncTokenPlaceholder: "服务器 Token",
   syncTokenSet: "已保存 Token，输入以更换",
