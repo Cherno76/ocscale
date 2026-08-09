@@ -83,7 +83,7 @@ impl Default for SyncConfig {
     }
 }
 
-fn load_config() -> SyncConfig {
+pub fn load_config() -> SyncConfig {
     let Some(p) = config_path() else {
         return SyncConfig::default();
     };

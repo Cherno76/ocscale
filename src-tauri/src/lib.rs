@@ -1000,6 +1000,13 @@ async fn set_sync_config(
     // after the switch is flipped on, so requiring them at this point would
     // make the toggle impossible to turn on. `sync_now()` already no-ops when
     // URL or token is empty, so an incomplete config is safe to persist.
+    // Keep the stored token when the field is left empty: the UI never echoes
+    // the saved token back, so a routine re-save must not wipe it.
+    let token = if token.trim().is_empty() {
+        sync::load_config().token
+    } else {
+        token
+    };
     sync::save_config(url, token, enabled)?;
     tauri::async_runtime::spawn_blocking(sync::sync_now)
         .await
