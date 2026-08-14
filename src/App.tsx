@@ -1438,6 +1438,15 @@ export default function App() {
     // live updates pushed from the background refresh thread — swaps the data in
     // place (no Loading), so values update without any flicker.
     listen<Dashboard>("dashboard-updated", (e) => applyDash(e.payload)).then(track);
+    // Balance rides the same 30s refresh. macOS never delivers the focus events
+    // this component otherwise refreshes on (the NSPanel delegate replaces
+    // tao's, so `windowDidBecomeKey` never reaches the webview), so without
+    // this push the panel balance would sit at its launch value while the tray
+    // label keeps updating.
+    listen<BalanceInfo | null>("balance-updated", (e) => {
+      setBalance(e.payload);
+      setBalanceFailed(e.payload === null);
+    }).then(track);
     // System appearance pushed natively from Rust (macOS). The webview's
     // prefers-color-scheme is unreliable for our hidden, non-activating menu-bar
     // panel, so the native event is the source of truth for System mode there;

@@ -41,6 +41,13 @@ fn refresh(app: &tauri::AppHandle) {
     update_tray_label(app, &dash);
     check_milestones(app, &dash);
     let _ = app.emit("dashboard-updated", &dash);
+    // Keep the panel's balance in lockstep with the tray label. The frontend's
+    // focus-triggered refresh never fires on macOS — the NSPanel delegate
+    // replaces tao's window delegate, so `windowDidBecomeKey` (the source of
+    // Focused events) is lost — leaving the panel balance stuck at its launch
+    // value. Push the same cached balance here instead; `balance()` is cached
+    // for 5 min, so this is a cheap cache hit on every 30s refresh.
+    let _ = app.emit("balance-updated", &balance::balance());
 }
 
 /// Set the tray title + tooltip according to the saved tray mode. macOS shows
