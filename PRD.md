@@ -225,6 +225,7 @@ ad-hoc 签名，文档注明手动放行方式。
 - 仪表盘：今日 / 本周 / 本月 + 对比、模型 / 项目 / Agent / MCP / Skill 分布、
   费用甜甜圈、26 周热力图
 - Codex 数据源合并显示（OpenCode + Codex 同一管线，概览页按模型 / 项目 / Agent 切换）
+- DeepSeek Harness 数据源合并显示（`store_dsh.rs` 解析 `~/.dsh` 会话日志，与 OpenCode + Codex 同一管线）
 - 100M 里程碑庆祝、截图、主题、双语、开机自启、单实例
 - Windows 支持（托盘 tooltip、popover 拖拽 + 位置记忆）
 
@@ -250,5 +251,6 @@ ad-hoc 签名，文档注明手动放行方式。
    未知模型显示「无定价」而非 0 元
 5. **缓存策略**：事件不落本地缓存（SQLite 即真源，210 天窗口内存裁剪）；仅价格表
    落盘缓存（24h，校验后写入）
-6. **数据源合并**：默认合并 OpenCode + Codex（`store.rs` / `store_codex.rs` → 同一
-   `RawEvent` 管线），概览页「模型 / 项目 / Agent」切换展示；项目按名称归并。
+6. **数据源合并**：默认合并 OpenCode + Codex + DeepSeek Harness（`store.rs` /
+   `store_codex.rs` / `store_dsh.rs` → 同一 `RawEvent` 管线），概览页「模型 / 项目 /
+   Agent」切换展示；项目按名称归并。

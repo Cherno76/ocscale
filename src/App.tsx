@@ -1140,23 +1140,32 @@ function AgentRow({ a, max, theme, share, color }: { a: AgentStat; max: number; 
   );
 }
 
-// Agent colors by data source: green shades for OpenCode, orange for Codex,
-// darker → lighter by rank within the source (keeps per-source distinction
-// while still telling individual agents apart).
-const OPENCODE_AGENT_COLORS = ["#047857", "#059669", "#10b981", "#34d399", "#6ee7b7", "#a7f3d0"];
-const CODEX_AGENT_COLORS = ["#c2410c", "#ea580c", "#f97316", "#fb923c", "#fdba74", "#fed7aa"];
+// Agent colors by data source: muted sage green for OpenCode, muted clay for
+// Codex, muted slate blue for DSH — darker → lighter by rank within the source.
+// The three hues stay soft/desaturated so the merged "by agent" view reads as
+// one calm family while still telling the sources apart.
+type AgentSource = "opencode" | "dsh" | "codex";
+function agentSourceOf(agent: string): AgentSource {
+  if (agent.startsWith("OpenCode-")) return "opencode";
+  if (agent === "DSH" || agent.startsWith("DSH-")) return "dsh";
+  return "codex";
+}
+const OPENCODE_AGENT_COLORS = ["#5b8a68", "#6f9b79", "#83ac8a", "#98bd9c", "#aeceaf", "#c4dfc3"];
+const CODEX_AGENT_COLORS = ["#ad8758", "#b9976a", "#c5a77d", "#d1b791", "#dcc7a6", "#e8d8bc"];
+const DSH_AGENT_COLORS = ["#6d86a3", "#7e96b0", "#90a6bd", "#a3b7ca", "#b6c7d7", "#cad8e4"];
 function agentColorBySource(agent: string, rankInSource: number): string {
-  const pal = agent.startsWith("OpenCode-") ? OPENCODE_AGENT_COLORS : CODEX_AGENT_COLORS;
+  const src = agentSourceOf(agent);
+  const pal = src === "opencode" ? OPENCODE_AGENT_COLORS : src === "dsh" ? DSH_AGENT_COLORS : CODEX_AGENT_COLORS;
   return pal[rankInSource % pal.length];
 }
 /// Precompute one color per agent (rows and donut must share the same mapping).
 function agentColorsFor(list: AgentStat[]): Map<string, string> {
   const out = new Map<string, string>();
-  const rank = new Map<string, number>();
+  const rank = new Map<AgentSource, number>();
   for (const a of list) {
-    const key = a.agent.startsWith("OpenCode-") ? "opencode" : "codex";
-    const i = rank.get(key) ?? 0;
-    rank.set(key, i + 1);
+    const src = agentSourceOf(a.agent);
+    const i = rank.get(src) ?? 0;
+    rank.set(src, i + 1);
     out.set(a.agent, agentColorBySource(a.agent, i));
   }
   return out;
@@ -1166,8 +1175,8 @@ function AgentsTab({ dash, theme, tr }: { dash: Dashboard; theme: Theme; tr: Dic
   const agents = dash.agents || [];
   const max = Math.max(...agents.map(a => a.tokens), 1e-9);
   const shares = sharePcts(agents.map(a => a.tokens));
-  // Color by data source (green = OpenCode, orange = Codex), darker → lighter
-  // by rank within the source; rows and donut share the same mapping.
+  // Color by data source (sage green = OpenCode, slate blue = DSH, clay =
+  // Codex), darker → lighter by rank; rows and donut share the same mapping.
   const colors = agentColorsFor(agents);
   const colorOf = (a: AgentStat) => colors.get(a.agent) ?? "#79817b";
   // Build donut items from agents with cost > 0 (keeping row colors).
@@ -1185,8 +1194,9 @@ function AgentsTab({ dash, theme, tr }: { dash: Dashboard; theme: Theme; tr: Dic
       <div style={{ minWidth: 0, borderRight: `1px solid ${theme.gridLine}`, paddingRight: 18 }}>
         <div style={{ marginBottom: 9 }}><Label t={theme}>{tr.tokensByAgent}</Label></div>
         <div style={{ display: "flex", gap: 14, marginBottom: 8, font: `500 ${theme.fs.small}px ${theme.mono}`, color: theme.dim }}>
-          <span><span style={{ color: "#10b981" }}>●</span> {tr.sourceOpenCode}</span>
-          <span><span style={{ color: "#f97316" }}>●</span> {tr.sourceCodex}</span>
+          <span><span style={{ color: OPENCODE_AGENT_COLORS[0] }}>●</span> {tr.sourceOpenCode}</span>
+          <span><span style={{ color: DSH_AGENT_COLORS[0] }}>●</span> {tr.sourceDsh}</span>
+          <span><span style={{ color: CODEX_AGENT_COLORS[0] }}>●</span> {tr.sourceCodex}</span>
         </div>
         {agents.length === 0 ? (
           <div style={{ font: `500 11.5px ${theme.mono}`, color: theme.faint, padding: "4px 0" }}>{tr.noUsageInThisPeriod}</div>

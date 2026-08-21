@@ -38,9 +38,20 @@ impl ModelPrice {
     }
 }
 
+/// A DeepSeek model's time-of-day split: one rate for the Beijing peak window
+/// (09:00–12:00 and 14:00–18:00) and one for the rest of the day.
+#[derive(Clone)]
+struct PeakPrice {
+    peak: ModelPrice,
+    offpeak: ModelPrice,
+}
+
 pub struct Pricing {
     exact: HashMap<String, ModelPrice>,
     norm: HashMap<String, ModelPrice>,
+    /// DeepSeek models with Beijing-time peak/off-peak pricing. Looked up first
+    /// in `cost()` so these official rates override any flat live-source entry.
+    peak: HashMap<String, PeakPrice>,
 }
 
 /// Strip provider path prefix (after last '/') and unify version separators
@@ -126,11 +137,22 @@ fn fetch_cached(name: &str, url: &str, valid: impl Fn(&str) -> bool) -> Option<S
     fs::read_to_string(&path).ok()
 }
 
+/// Whether an epoch-ms timestamp lands in DeepSeek's Beijing peak window:
+/// 09:00–12:00 and 14:00–18:00 (Beijing = UTC+8, no DST). Everything else is
+/// off-peak. Pure arithmetic on the UTC+8 shift, so it never needs a timezone
+/// database and handles pre-epoch timestamps via `div_euclid`/`rem_euclid`.
+fn is_beijing_peak(ts_ms: i64) -> bool {
+    let secs = ts_ms.div_euclid(1000) + 8 * 3600;
+    let hour = secs.div_euclid(3600).rem_euclid(24);
+    (9..12).contains(&hour) || (14..18).contains(&hour)
+}
+
 impl Pricing {
     pub fn load() -> Self {
         let mut p = Pricing {
             exact: HashMap::new(),
             norm: HashMap::new(),
+            peak: HashMap::new(),
         };
         // 1. models.dev — primary (inserted first, so it wins on conflict)
         if let Some(text) = fetch_cached("modelsdev", MODELSDEV_URL, valid_modelsdev) {
@@ -155,6 +177,7 @@ impl Pricing {
         let mut p = Pricing {
             exact: HashMap::new(),
             norm: HashMap::new(),
+            peak: HashMap::new(),
         };
         p.ingest_builtin();
         p
@@ -264,20 +287,33 @@ impl Pricing {
         for (id, price) in b {
             self.insert(id, price.clone());
         }
-        // deepseek-v4-flash — official DeepSeek rates (CNY per 1M tokens):
-        //   input (cache miss) ¥1, cache hit ¥0.02, output ¥2.
+        // deepseek-v4-flash / deepseek-v4-pro — official DeepSeek rates with a
+        // Beijing-time peak/off-peak split (CNY per 1M tokens):
+        //                    off-peak                  peak
+        //   flash  miss ¥1.5 / hit ¥0.05 / out ¥4.5    miss ¥3.0 / hit ¥0.10 / out ¥9.0
+        //   pro    miss ¥4.5 / hit ¥0.15 / out ¥13.5   miss ¥9.0 / hit ¥0.30 / out ¥27.0
         // Cache-write tokens bill at the cache-miss input rate. The live
-        // LiteLLM table has the model but prices cache writes at 0, so these
-        // rates override it. Stored as USD at the zh UI's exchange rate (7.2)
-        // so the panel's `cost × 7.2` shows the exact CNY figure.
-        let flash = mk(
-            1.0 / 7.2 / 1e6,
-            2.0 / 7.2 / 1e6,
-            1.0 / 7.2 / 1e6,
-            0.02 / 7.2 / 1e6,
+        // LiteLLM table has flash but prices cache writes at 0, so these rates
+        // override it. Stored as USD at the zh UI's exchange rate (7.2) so the
+        // panel's `cost × 7.2` shows the exact CNY figure. Peak is 09:00–12:00
+        // and 14:00–18:00 Beijing time (UTC+8, no DST); see `is_beijing_peak`.
+        let cny = |miss: f64, hit: f64, out: f64| mk(
+            miss / 7.2 / 1e6,
+            out / 7.2 / 1e6,
+            miss / 7.2 / 1e6,
+            hit / 7.2 / 1e6,
         );
-        self.exact.insert("deepseek-v4-flash".to_string(), flash.clone());
-        self.norm.insert(normalize_key("deepseek-v4-flash"), flash);
+        let mut peak = |name: &str, miss: f64, hit: f64, out: f64| {
+            self.peak.insert(
+                name.to_string(),
+                PeakPrice {
+                    peak: cny(miss * 2.0, hit * 2.0, out * 2.0),
+                    offpeak: cny(miss, hit, out),
+                },
+            );
+        };
+        peak("deepseek-v4-flash", 1.5, 0.05, 4.5);
+        peak("deepseek-v4-pro", 4.5, 0.15, 13.5);
     }
 
     fn lookup(&self, model: &str) -> Option<&ModelPrice> {
@@ -287,8 +323,9 @@ impl Pricing {
         self.norm.get(&normalize_key(model))
     }
 
-    /// Exact-or-normalized cost in USD. None = no pricing data for this model.
-    /// Reasoning tokens are priced at the output rate.
+    /// Exact-or-normalized cost in USD, at the `ts_ms`-implied Beijing peak /
+    /// off-peak rate for DeepSeek models with time-of-day pricing. `None` = no
+    /// pricing data for this model. Reasoning tokens are priced at the output rate.
     pub fn cost(
         &self,
         model: &str,
@@ -297,8 +334,14 @@ impl Pricing {
         cache_create: f64,
         cache_read: f64,
         reasoning: f64,
+        ts_ms: i64,
     ) -> Option<f64> {
-        let p = self.lookup(model)?;
+        let p = self
+            .peak
+            .get(model)
+            .or_else(|| self.peak.get(&normalize_key(model)))
+            .map(|pp| if is_beijing_peak(ts_ms) { &pp.peak } else { &pp.offpeak })
+            .or_else(|| self.lookup(model))?;
         Some(
             input * p.input
                 + output * p.output
@@ -318,15 +361,54 @@ impl Pricing {
 mod tests {
     use super::*;
 
+    /// Epoch ms for a given hour of day in Beijing (UTC+8). `ts_ms = 0` is
+    /// 08:00 Beijing, so `ts_at_beijing_hour(h)` = (h − 8) hours shifted.
+    fn ts_at_beijing_hour(hour: i64) -> i64 {
+        (hour - 8) * 3600 * 1000
+    }
+
     #[test]
-    fn deepseek_v4_flash_uses_official_rates() {
+    fn beijing_peak_window_boundaries() {
+        assert!(!is_beijing_peak(ts_at_beijing_hour(8))); // 08:00 off-peak
+        assert!(is_beijing_peak(ts_at_beijing_hour(9)));
+        assert!(is_beijing_peak(ts_at_beijing_hour(11)));
+        assert!(!is_beijing_peak(ts_at_beijing_hour(12))); // 12:00 off-peak
+        assert!(!is_beijing_peak(ts_at_beijing_hour(13)));
+        assert!(is_beijing_peak(ts_at_beijing_hour(14)));
+        assert!(is_beijing_peak(ts_at_beijing_hour(17)));
+        assert!(!is_beijing_peak(ts_at_beijing_hour(18))); // 18:00 off-peak
+    }
+
+    #[test]
+    fn deepseek_v4_flash_prices_peak_and_offpeak() {
         let p = Pricing::builtin_only();
-        assert!(p.lookup("deepseek-v4-flash").is_some());
-        // 1M miss input + 1M cache write + 1M cache hit + 1M output (USD):
+        // 1M miss input + 1M cache write + 1M cache hit + 1M output (USD).
+        // Off-peak: miss ¥1.5 + write ¥1.5 + out ¥4.5 + hit ¥0.05.
         let c = p
-            .cost("deepseek-v4-flash", 1e6, 1e6, 1e6, 1e6, 0.0)
+            .cost("deepseek-v4-flash", 1e6, 1e6, 1e6, 1e6, 0.0, ts_at_beijing_hour(2))
             .unwrap();
-        let expected = (1.0 + 1.0 + 2.0 + 0.02) / 7.2;
-        assert!((c - expected).abs() < 1e-9, "cost={c} expected={expected}");
+        let off = (1.5 + 1.5 + 4.5 + 0.05) / 7.2;
+        assert!((c - off).abs() < 1e-9, "off-peak cost={c} expected={off}");
+        // Peak: miss ¥3.0 + write ¥3.0 + out ¥9.0 + hit ¥0.10.
+        let c = p
+            .cost("deepseek-v4-flash", 1e6, 1e6, 1e6, 1e6, 0.0, ts_at_beijing_hour(10))
+            .unwrap();
+        let peak = (3.0 + 3.0 + 9.0 + 0.10) / 7.2;
+        assert!((c - peak).abs() < 1e-9, "peak cost={c} expected={peak}");
+    }
+
+    #[test]
+    fn deepseek_v4_pro_prices_peak_and_offpeak() {
+        let p = Pricing::builtin_only();
+        let c = p
+            .cost("deepseek-v4-pro", 1e6, 1e6, 1e6, 1e6, 0.0, ts_at_beijing_hour(3))
+            .unwrap();
+        let off = (4.5 + 4.5 + 13.5 + 0.15) / 7.2;
+        assert!((c - off).abs() < 1e-9, "off-peak cost={c} expected={off}");
+        let c = p
+            .cost("deepseek-v4-pro", 1e6, 1e6, 1e6, 1e6, 0.0, ts_at_beijing_hour(15))
+            .unwrap();
+        let peak = (9.0 + 9.0 + 27.0 + 0.30) / 7.2;
+        assert!((c - peak).abs() < 1e-9, "peak cost={c} expected={peak}");
     }
 }

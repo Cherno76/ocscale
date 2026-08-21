@@ -5,7 +5,7 @@ mod balance;
 mod sync;
 
 use ocscale_core::model::{Dashboard, PeriodReport};
-use ocscale_core::{parser, pricing, store_codex};
+use ocscale_core::{parser, pricing, store_codex, store_dsh};
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -909,6 +909,14 @@ pub fn dashboard_json() -> String {
 /// run via `cargo run --example dump_codex`.
 pub fn codex_dashboard_json() -> String {
     let events = store_codex::load_events();
+    serde_json::to_string_pretty(&parser::build_dashboard_from(&events)).unwrap_or_default()
+}
+
+/// DeepSeek Harness data source: build a Dashboard from DSH session logs
+/// (`~/.dsh/sessions/**`). Wired into the app's merged view; run standalone via
+/// `cargo run --example dump_dsh`.
+pub fn dsh_dashboard_json() -> String {
+    let events = store_dsh::load_events();
     serde_json::to_string_pretty(&parser::build_dashboard_from(&events)).unwrap_or_default()
 }
 

@@ -45,7 +45,9 @@ OpenCode SQLite DB (~/.local/share/opencode/opencode.db)
     ↓ (core/src/store.rs — query_events → RawEvent[], compare-by-value for change detection)
 Codex transcripts (~/.codex/sessions/** + archived_sessions/)
     ↓ (core/src/store_codex.rs — mtime-memoized parse → RawEvent)
-ocscale-core parser::build_dashboard() ← serialised by BUILD_LOCK (Mutex), merges both sources
+DeepSeek Harness session logs (~/.dsh/sessions/**/session.jsonl[.zstd], or $DSH_HOME)
+    ↓ (core/src/store_dsh.rs — mtime-memoized parse → RawEvent)
+ocscale-core parser::build_dashboard() ← serialised by BUILD_LOCK (Mutex), merges all sources
     ├── core/src/config.rs             → MCP/Skill whitelists (opencode.json `mcp` keys + skills dir)
     └── core/src/pricing.rs::Pricing::shared() → Arc memoized, loaded off-main-thread, refreshed every 24h
     ↓
@@ -64,7 +66,7 @@ ocscale-core aggregation.
 **Frontend files** (5): `src/App.tsx`, `charts.tsx`, `data.ts`, `i18n.ts`, `main.tsx`.
 
 **Rust crates**:
-- `core` (ocscale-core): `store.rs` (SQLite→RawEvent), `store_codex.rs` (Codex data source — parses `~/.codex` transcripts), `parser.rs` (aggregation), `pricing.rs` (price loading/cost), `model.rs` (serializable structs), `config.rs` (user MCP/Skill whitelist).
+- `core` (ocscale-core): `store.rs` (SQLite→RawEvent), `store_codex.rs` (Codex data source — parses `~/.codex` transcripts), `store_dsh.rs` (DeepSeek Harness data source — parses `~/.dsh` session logs), `parser.rs` (aggregation), `pricing.rs` (price loading/cost), `model.rs` (serializable structs), `config.rs` (user MCP/Skill whitelist).
 - `server` (ocscale-server): multi-device event store + `POST /api/events` / `GET /api/dashboard` / `GET /api/health`.
 - `src-tauri` (ocscale app): `lib.rs` (app setup, tray, commands, 100M celebration), `sync.rs` (multi-device push), `balance.rs` (DeepSeek balance), `main.rs` (entry).
 
@@ -72,12 +74,13 @@ ocscale-core aggregation.
 
 - **Primary**: OpenCode SQLite database at `$XDG_DATA_HOME/opencode/opencode.db` or `~/.local/share/opencode/opencode.db`.
 - **Pricing**: models.dev API → LiteLLM → built-in snapshot (`core/snapshots/litellm.json`). Cached at `~/Library/Caches/ocscale/` (macOS) / platform cache dir, refreshed every 24h.
-- **`deepseek-v4-flash` pricing override** (built into `pricing.rs`): official DeepSeek rates — ¥1/M cache-miss input (cache-write tokens bill at this rate), ¥0.02/M cache hit, ¥2/M output — stored as USD at the zh UI's 7.2 rate so `cost × 7.2` shows exact CNY. Overrides the live LiteLLM entry, which prices cache writes at 0.
+- **DeepSeek pricing override** (built into `pricing.rs`): official `deepseek-v4-flash` / `deepseek-v4-pro` rates with a Beijing-time peak/off-peak split (CNY per 1M tokens) — flash off-peak ¥1.5 cache-miss / ¥0.05 cache-hit / ¥4.5 output, peak ¥3.0 / ¥0.10 / ¥9.0; pro off-peak ¥4.5 / ¥0.15 / ¥13.5, peak ¥9.0 / ¥0.30 / ¥27.0. Peak = Beijing 09:00–12:00 and 14:00–18:00 (UTC+8, no DST); `pricing::cost` picks the rate from the event timestamp (`ts_ms`). Cache-write tokens bill at the cache-miss input rate. Stored as USD at the zh UI's 7.2 rate so `cost × 7.2` shows exact CNY; overrides the live LiteLLM entry, which prices cache writes at 0.
 - **MCP/Skill tracking**: implemented for OpenCode. `config.rs` reads user MCP server names from `~/.config/opencode/opencode.json` (`mcp` object keys) and skill names from the `~/.config/opencode/skills/` directory. `store.rs` classifies tool calls from the `part` table: built-in tools are filtered, `{server}_{tool}` names whose prefix matches a configured MCP server count as MCP, and the `skill` tool's `state.input.name` counts as a Skill call.
 - Price matching: exact model name → normalized (strip vendor prefix after `/`, `.`↔`p`). Unmatched models still count tokens but show "no price" label.
 - OpenCode's per-message `cost` field is used as a fallback when the pricing module doesn't recognise a model.
 - **DeepSeek balance (UI)**: the hero shows `当前余额` after the est. cost. Rust `get_balance` command → GET `https://api.deepseek.com/user/balance`, cached 5 min. The API key comes **only** from the key the user enters in the panel (`set_deepseek_key`), stored as `data_dir/ocscale/deepseek_key` (0600) — there is deliberately **no discovery** from env vars or other apps' configs. `get_deepseek_key_status` reports "missing" when none is saved, and the hero shows a 设置 API Key prompt. Never logged or printed.
 - **Codex data source (merged)**: `build_dashboard` combines OpenCode + Codex `RawEvent`s; `store_codex.rs` parses `~/.codex/sessions/**` + `archived_sessions/` transcripts (mtime-memoized). Per-turn tokens come from `token_count` (`total_token_usage` is session-cumulative → use deltas; **`input_tokens` includes `cached_input_tokens` as a subset — uncached input = input − cached, never add both**). MCP tools come from the `function_call` `namespace` field (`mcp__<server>`, e.g. `mcp__node_repl`); there is no per-message model/cost (session-level model, pricing-module fallback) and no Skill equivalent. Standalone dump: `cd src-tauri && cargo run --example dump_codex > /tmp/codex-dashboard.json`. Merged display groups projects by name; the Overview tab can toggle Model / Project / Agent.
+- **DeepSeek Harness data source (merged)**: `build_dashboard` also merges DSH session logs; `store_dsh.rs` parses `~/.dsh/sessions/**/session.jsonl[.zstd]` (or `$DSH_HOME/sessions`, mtime-memoized, zstd-decompressed). Each `assistant/message` with a `usage` payload is one `RawEvent` (source `"dsh"`); its `usage` maps directly — `inputTokens` is already uncached input, `cacheReadTokens`→`cr`, `cacheWriteTokens`→`cc`, `reasoningTokens`→`reasoning` (no subtraction, unlike Codex). The model comes from `request/context` (`provider` + `model`); MCP tools are `tool/call` names `mcp__<server>__<tool>` (built-in tools like `read`/`bash` are ignored); the header's `cwd` is the project and `agentPreset` the agent. There is no per-message cost or Skill equivalent. Standalone dump: `cd src-tauri && cargo run --example dump_dsh > /tmp/dsh-dashboard.json`.
 
 ## Key gotchas
 

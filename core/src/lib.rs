@@ -11,3 +11,4 @@ pub mod parser;
 pub mod pricing;
 pub mod store;
 pub mod store_codex;
+pub mod store_dsh;

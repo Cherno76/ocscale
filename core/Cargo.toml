@@ -12,3 +12,5 @@ dirs = "5"
 ureq = { version = "2", features = ["json"] }
 # SQLite for reading the OpenCode session database
 rusqlite = { version = "0.31", features = ["bundled"] }
+# zstd for decompressing DeepSeek Harness session logs (session.jsonl.zstd)
+zstd = "0.13"

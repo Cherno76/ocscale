@@ -119,6 +119,7 @@ const EN = {
   byAgent: "Agent",
   sourceOpenCode: "OpenCode",
   sourceCodex: "Codex",
+  sourceDsh: "DSH",
   // Code tab
   codeActivity: "Code activity",
   linesAdded: "Added",
@@ -235,6 +236,7 @@ const ZH: Dict = {
   byAgent: "Agent",
   sourceOpenCode: "OpenCode",
   sourceCodex: "Codex",
+  sourceDsh: "DSH",
   // Code tab
   codeActivity: "代码活动",
   linesAdded: "新增行",

@@ -107,9 +107,11 @@ fn load_merged_events() -> Vec<RawEvent> {
     store.ingest();
     let cutoff = (Local::now() - Duration::days(210)).timestamp_millis();
     store.prune_before(cutoff);
-    // Merge Codex transcripts (memoized by file mtime) for the combined view.
+    // Merge Codex transcripts and DeepSeek Harness session logs (both memoized
+    // by file mtime) for the combined view.
     let mut events = store.events;
     events.extend(crate::store_codex::cached_events().iter().cloned());
+    events.extend(crate::store_dsh::cached_events().iter().cloned());
     events.retain(|e| e.ts_ms >= cutoff);
     events.sort_by_key(|e| e.ts_ms);
     events
@@ -236,10 +238,10 @@ fn compute_event(r: &RawEvent, cfg: &UserConfig, pricing: &Pricing) -> Event {
     // then finally falls back to OpenCode's own cost calculation.
     // Track which source produced the cost value.
     let (cost_opt, cost_source) = if let Some(c) = pricing
-        .cost(&r.model, r.in_tok, r.out_tok, r.cc, r.cr, r.reasoning)
+        .cost(&r.model, r.in_tok, r.out_tok, r.cc, r.cr, r.reasoning, r.ts_ms)
     {
         (Some(c), "pricing")
-    } else if let Some(c) = pricing.cost(&model, r.in_tok, r.out_tok, r.cc, r.cr, r.reasoning) {
+    } else if let Some(c) = pricing.cost(&model, r.in_tok, r.out_tok, r.cc, r.cr, r.reasoning, r.ts_ms) {
         (Some(c), "pricing")
     } else if let Some(c) = r.stored_cost {
         (Some(c), "opencode")
@@ -247,10 +249,11 @@ fn compute_event(r: &RawEvent, cfg: &UserConfig, pricing: &Pricing) -> Event {
         (None, "none")
     };
     // MCP/Skill whitelisting: a device-side store only records *configured*
-    // MCP servers and Codex events are pre-classified via `mcp__` namespaces.
-    // An empty whitelist (e.g. the sync server aggregating events pushed from
-    // other machines) means "trust the event's classification as-is".
-    let mcp = if cfg.mcp_servers.is_empty() || r.source == "codex" {
+    // MCP servers; Codex and DSH events are pre-classified via `mcp__`
+    // namespaces (independent of the OpenCode config). An empty whitelist
+    // (e.g. the sync server aggregating events pushed from other machines)
+    // means "trust the event's classification as-is".
+    let mcp = if cfg.mcp_servers.is_empty() || r.source == "codex" || r.source == "dsh" {
         r.mcp.clone()
     } else {
         r.mcp

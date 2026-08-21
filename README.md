@@ -29,11 +29,14 @@ Stack: **Tauri 2 + React + TypeScript** (frontend) / **Rust** (data layer).
 
 ## Data sources (zero-intrusion)
 
-The app only ever **reads** OpenCode's data — it never writes to or modifies it.
+The app only ever **reads** OpenCode / Codex / DeepSeek Harness data — it never
+writes to or modifies it.
 
 | Purpose | Source |
 |---------|--------|
 | Messages (tokens / model / tool calls) | OpenCode SQLite DB — `$XDG_DATA_HOME/opencode/opencode.db` or `~/.local/share/opencode/opencode.db` |
+| Codex messages (tokens / MCP) | `~/.codex/sessions/**` + `~/.codex/archived_sessions/**` JSONL transcripts |
+| DeepSeek Harness messages (tokens / MCP) | `~/.dsh/sessions/**/session.jsonl[.zstd]` (or `$DSH_HOME/sessions`) — zstd-decompressed |
 | User MCP whitelist | `~/.config/opencode/opencode.json` → `mcp` object keys |
 | User Skill whitelist | `~/.config/opencode/skills/` directory |
 | Model prices | **Primary**: [models.dev](https://models.dev/api.json) → **Fallback**: [LiteLLM](https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json) → built-in snapshot. Cached in `~/Library/Caches/ocscale/` (platform cache dir), refreshed every 24h, offline fallback |
@@ -163,6 +166,7 @@ cargo run --release -p ocscale-server
 core/                 ocscale-core crate — shared aggregation (RawEvent → Dashboard)
   store.rs            OpenCode SQLite → RawEvent (+ tool-call classification)
   store_codex.rs      Codex transcripts → RawEvent
+  store_dsh.rs        DeepSeek Harness session logs → RawEvent
   parser.rs           aggregation (Day/Week/Month + heatmap)
   pricing.rs          models.dev / LiteLLM price loading and costing
   config.rs           user MCP / Skill whitelist
