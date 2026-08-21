@@ -2,7 +2,6 @@
 #![allow(deprecated, unexpected_cfgs)]
 
 mod balance;
-mod sync;
 
 use ocscale_core::model::{Dashboard, PeriodReport};
 use ocscale_core::{parser, pricing, store_codex, store_dsh};
@@ -994,54 +993,6 @@ fn clear_deepseek_key() {
     balance::invalidate_cache();
 }
 
-/// Sync settings + last result for the multi-device panel (never returns the
-/// stored token — only whether one is configured).
-#[tauri::command]
-async fn get_sync_config() -> sync::SyncStatus {
-    tauri::async_runtime::spawn_blocking(sync::status)
-        .await
-        .unwrap_or_else(|_| sync::status())
-}
-
-/// Save the sync server URL / token / enable flag, then push immediately so
-/// the user sees the connection actually work. Stored 0600 like the key.
-#[tauri::command]
-async fn set_sync_config(
-    url: String,
-    token: String,
-    enabled: bool,
-) -> Result<sync::SyncStatus, String> {
-    // No validation here: the settings panel only shows the URL/token fields
-    // after the switch is flipped on, so requiring them at this point would
-    // make the toggle impossible to turn on. `sync_now()` already no-ops when
-    // URL or token is empty, so an incomplete config is safe to persist.
-    // Keep the stored token when the field is left empty: the UI never echoes
-    // the saved token back, so a routine re-save must not wipe it.
-    let token = if token.trim().is_empty() {
-        sync::load_config().token
-    } else {
-        token
-    };
-    sync::save_config(url, token, enabled)?;
-    tauri::async_runtime::spawn_blocking(sync::sync_now)
-        .await
-        .map_err(|e| e.to_string())?;
-    tauri::async_runtime::spawn_blocking(sync::status)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-/// Manually trigger a sync push (settings → "Sync now").
-#[tauri::command]
-async fn trigger_sync() -> Result<sync::SyncStatus, String> {
-    tauri::async_runtime::spawn_blocking(sync::sync_now)
-        .await
-        .map_err(|e| e.to_string())?;
-    tauri::async_runtime::spawn_blocking(sync::status)
-        .await
-        .map_err(|e| e.to_string())
-}
-
 /// Current tray label mode: "tokens" or "balance".
 #[tauri::command]
 fn get_tray_mode() -> String {
@@ -1190,7 +1141,7 @@ pub fn run() {
     }
 
     builder
-        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag, get_autostart, set_autostart, quit_app, get_version, get_balance, get_deepseek_key_status, set_deepseek_key, clear_deepseek_key, get_tray_mode, set_tray_mode, get_day_mode, set_day_mode, get_period, fit_panel, set_lang, get_sync_config, set_sync_config, trigger_sync])
+        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag, get_autostart, set_autostart, quit_app, get_version, get_balance, get_deepseek_key_status, set_deepseek_key, clear_deepseek_key, get_tray_mode, set_tray_mode, get_day_mode, set_day_mode, get_period, fit_panel, set_lang])
         .setup(move |app| {
             // Menu-bar–only app: no Dock icon, runs in the background.
             #[cfg(target_os = "macos")]
@@ -1429,19 +1380,6 @@ pub fn run() {
             std::thread::spawn(move || loop {
                 std::thread::sleep(Duration::from_secs(30));
                 refresh(&handle);
-            });
-
-            // Multi-device sync: push new RawEvents to the configured server.
-            // Its own thread so a slow/unreachable server (up to a 20s HTTP
-            // timeout) never delays the tray refresh loop.
-            std::thread::spawn(move || loop {
-                std::thread::sleep(Duration::from_secs(30));
-                sync::sync_now();
-            });
-            // First push shortly after launch instead of waiting a full cycle.
-            std::thread::spawn(move || {
-                std::thread::sleep(Duration::from_secs(5));
-                sync::sync_now();
             });
 
             // No filesystem watcher needed: the 30s polling loop above is

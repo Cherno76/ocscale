@@ -2,7 +2,7 @@
 name = "ocscale-core"
 version = "0.1.0"
 edition = "2021"
-description = "OCScale aggregation core: RawEvent extraction and Dashboard building, shared by the app and the multi-device sync server"
+description = "OCScale aggregation core: RawEvent extraction and Dashboard building for the OCScale app"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

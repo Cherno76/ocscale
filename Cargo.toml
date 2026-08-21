@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["core", "server", "src-tauri"]
+members = ["core", "src-tauri"]
 
 # Shared release profile for all workspace crates (was previously scoped to the
 # app; a workspace must define profiles at its root).

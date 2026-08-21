@@ -12,14 +12,12 @@ pnpm tauri build                 # production .app/.dmg (macOS) or .exe (Windows
 cargo test -p ocscale         # Rust unit tests (src-tauri/src/lib.rs inline)
 # regenerate dev mock snapshot:
 cd src-tauri && cargo run --example dump > ../public/dev-dashboard.json
-# multi-device sync server (see "Multi-device sync" below):
-OCSCALE_TOKEN=... OCSCALE_ADDR=127.0.0.1:8787 cargo run --release -p ocscale-server
 ```
 
 - `pnpm build` runs `tsc && vite build` — typecheck comes first, then bundle.
 - `strictPort: true` on port 1420 — nothing else should bind that port.
 - There is **no lint/formatter config** (no ESLint, Prettier, or pre-commit hooks).
-- The repo is a Cargo workspace (`core` + `server` + `src-tauri`); the workspace
+- The repo is a Cargo workspace (`core` + `src-tauri`); the workspace
   `Cargo.lock` lives at the repo root (not `src-tauri/`), and the shared target
   dir is `src-tauri/target` (set in `.cargo/config.toml`).
 
@@ -57,18 +55,13 @@ src/data.ts (fetchDashboard → auto-detects Tauri vs browser dev mock)
     ↓
 App.tsx + charts.tsx (React, custom SVG charts — no chart library)
 
-Multi-device path: `sync.rs` pushes new RawEvents to `ocscale-server`
-(`POST /api/events`, idempotent on `(source, id)`); the server stores them in
-SQLite and serves the merged Dashboard (`GET /api/dashboard`) using the same
-ocscale-core aggregation.
 ```
 
 **Frontend files** (5): `src/App.tsx`, `charts.tsx`, `data.ts`, `i18n.ts`, `main.tsx`.
 
 **Rust crates**:
 - `core` (ocscale-core): `store.rs` (SQLite→RawEvent), `store_codex.rs` (Codex data source — parses `~/.codex` transcripts), `store_dsh.rs` (DeepSeek Harness data source — parses `~/.dsh` session logs), `parser.rs` (aggregation), `pricing.rs` (price loading/cost), `model.rs` (serializable structs), `config.rs` (user MCP/Skill whitelist).
-- `server` (ocscale-server): multi-device event store + `POST /api/events` / `GET /api/dashboard` / `GET /api/health`.
-- `src-tauri` (ocscale app): `lib.rs` (app setup, tray, commands, 100M celebration), `sync.rs` (multi-device push), `balance.rs` (DeepSeek balance), `main.rs` (entry).
+- `src-tauri` (ocscale app): `lib.rs` (app setup, tray, commands, 100M celebration), `balance.rs` (DeepSeek balance), `main.rs` (entry).
 
 ## Data sources & pricing
 
@@ -93,8 +86,7 @@ ocscale-core aggregation.
 - **Period paging**: the Week/Month views have ‹ › arrows (`get_period` command → `parser::period_report(period, offset)`; offset 0 = current, −1 = previous). Week/month reports take an `offset` param; the paged report is fetched on demand and shown statically while the current period keeps live updates.
 - **NSPanel**: the macOS window is converted to a non-activating NSPanel (level 25 = NSMainMenuWindowLevel + 1) so it floats over fullscreen apps without stealing focus. Panel hides on resign-key, Space change, and app activation.
 - **BUILD_LOCK**: `parser::build_dashboard()` is the single entry point for all data. It holds a Mutex — call it from `spawn_blocking`, never inline on the async runtime.
-- **30s background refresh**: the polling loop in `lib.rs` calls `refresh()` (build_dashboard + emit + tray update). The tray also refreshes on panel open via `get_dashboard` command. A separate sync thread pushes new events to the multi-device server every 30s (first push 5s after launch), guarded by its own mutex and a persisted watermark.
-- **Multi-device sync**: `src-tauri/src/sync.rs` — enabled via the panel (Overview → Multi-device sync). Config (`sync.json` incl. token, 0600), device id, and watermark live in `data_dir/ocscale/`. Commands: `get_sync_config`, `set_sync_config`, `trigger_sync`. Server-side, an empty MCP/Skill whitelist means "trust the event's pre-classified lists", so aggregation works on the server without per-machine config; `servers`/`skills` counts there are approximated from distinct names across merged events.
+- **30s background refresh**: the polling loop in `lib.rs` calls `refresh()` (build_dashboard + emit + tray update). The tray also refreshes on panel open via `get_dashboard` command.
 - **System theme**: macOS NSPanel doesn't reliably get `prefers-color-scheme`, so an `AppleInterfaceThemeChangedNotification` observer pushes `system-is-dark` to the frontend. On non-macOS, the webview's native `prefers-color-scheme` should work.
 - **Unsigned builds**: no code signing or notarization. macOS users must right-click→Open or `xattr -cr`. Windows gets SmartScreen warning. CI has the secrets commented out — uncommenting them without real secrets will break the build (Tauri's bundler treats empty `APPLE_CERTIFICATE` as "a certificate is present").
 - **CI**: triggers on `git push --tags` with `v*` tag. `fail-fast: false` — macOS and Windows legs are independent. The macOS leg also updates the Homebrew Cask tap.
