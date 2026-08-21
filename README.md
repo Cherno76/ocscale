@@ -2,65 +2,101 @@
 
 **English** · [中文](README-zh.md)
 
-A **menu-bar / system-tray app for macOS and Windows** that shows your OpenCode CLI
-**daily token usage, estimated cost, and per-model / project / agent / MCP / Skill
-breakdown**.
+![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
+![Platform: macOS / Windows](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)
+
+A **menu-bar / system-tray app for macOS and Windows** that shows your **daily token
+usage and estimated cost** across OpenCode, Codex and DeepSeek Harness — with
+per-model / project / agent / MCP / Skill breakdowns and your **DeepSeek account
+balance** right in the panel.
 
 Stack: **Tauri 2 + React + TypeScript** (frontend) / **Rust** (data layer).
 
 ![OCScale panel](docs/screenshot.png)
 
-## What it does
+> 100% local & read-only. The app never writes to your data, has no cloud component,
+> no telemetry and no account — **single machine, private by design**.
 
-- Shows today's token count next to the menu-bar icon (e.g. `⬡ 14.00M`); on Windows the
-  same number is exposed through the tray tooltip, since the tray API has no text label
-- Click the tray icon to toggle the panel: Day / Week / Month, each compared against the
-  previous period with a percentage delta
-- Metrics: total tokens (input / cache / output / reasoning), estimated cost, requests /
-  sessions
-- Breakdowns: **by model**, **by project**, **by agent**, **by MCP call**, **by Skill
-  call** — with a cost donut (hover for a single entry) and a ~26-week activity heatmap
-- Three tabs: **Overview / Agents / Sessions** (the Code tab was removed — OpenCode's DB
-  never populates code stats)
-- **Counts only the MCP servers / Skills you installed yourself** — all OpenCode
-  built-in tools are filtered out
-- Extras: 100M-token milestone confetti, save-screenshot to Desktop, launch-at-login
-  preference, dark/light/system theme, EN/中文 UI
+## Features
+
+- **Menu-bar label**: today's token count (e.g. `⬡ 14.00M`) next to the icon; on
+  Windows the same number is shown in the tray tooltip, since the tray API has no
+  text label
+- **Tray label mode**: toggle between today's tokens and the **DeepSeek balance**
+  (e.g. `¥12.34`) — both the menu-bar title and the tooltip follow
+- **Panel** (click the tray icon): Day / Week / Month, each compared against the
+  previous period with a percentage delta; Week / Month have ‹ › paging
+- **Metrics**: total tokens (input / cache / output / reasoning), estimated cost,
+  requests / sessions, cache-hit % and cost-per-request sparklines
+- **Breakdowns**: by **model**, **project**, **agent**, **MCP call**, **Skill call** —
+  with a cost donut (hover for a single entry) and a ~26-week activity heatmap
+- **DeepSeek balance**: the hero shows `当前余额` (current balance) next to the
+  estimated cost; enter your DeepSeek API key once in the panel — it is stored
+  locally (`0600`), never logged, and only used to query the balance endpoint
+- **Day boundary**: switch the Day view / tray "today" between the **local calendar
+  day** and the **UTC platform day** used by DeepSeek's usage dashboard
+- Tabs: **Overview / Agents / Sessions**
+- **Only your own MCP servers / Skills are counted** — all OpenCode built-in tools
+  are filtered out
+- Extras: 100M-token milestone confetti, save panel screenshot to Desktop, launch-at-
+  login preference, dark / light / system theme, EN / 中文 UI
+- macOS: the panel is a floating NSPanel that stays above fullscreen apps without
+  stealing focus
 
 ## Data sources (zero-intrusion)
 
-The app only ever **reads** OpenCode / Codex / DeepSeek Harness data — it never
-writes to or modifies it.
+The app only ever **reads** local data — it never writes to or modifies it.
 
 | Purpose | Source |
 |---------|--------|
-| Messages (tokens / model / tool calls) | OpenCode SQLite DB — `$XDG_DATA_HOME/opencode/opencode.db` or `~/.local/share/opencode/opencode.db` |
+| OpenCode messages (tokens / model / tool calls) | OpenCode SQLite DB — `$XDG_DATA_HOME/opencode/opencode.db` or `~/.local/share/opencode/opencode.db` |
 | Codex messages (tokens / MCP) | `~/.codex/sessions/**` + `~/.codex/archived_sessions/**` JSONL transcripts |
-| DeepSeek Harness messages (tokens / MCP) | `~/.dsh/sessions/**/session.jsonl[.zstd]` (or `$DSH_HOME/sessions`) — zstd-decompressed |
+| DeepSeek Harness messages (tokens / MCP) | `~/.dsh/sessions/**/session.jsonl[.zstd]` (or `$DSH_HOME/sessions`), zstd-decompressed |
 | User MCP whitelist | `~/.config/opencode/opencode.json` → `mcp` object keys |
 | User Skill whitelist | `~/.config/opencode/skills/` directory |
 | Model prices | **Primary**: [models.dev](https://models.dev/api.json) → **Fallback**: [LiteLLM](https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json) → built-in snapshot. Cached in `~/Library/Caches/ocscale/` (platform cache dir), refreshed every 24h, offline fallback |
+| DeepSeek balance | `GET https://api.deepseek.com/user/balance` — key entered in the panel, cached 5 min |
+
+### Pricing
+
+- Prices are matched by exact model name, then a normalized name (strip vendor
+  prefix + `.`↔`p`, e.g. `glm-5.1`⇄`glm-5p1`); the official bare-name price wins
+- **Built-in DeepSeek override** (in `pricing.rs`): official `deepseek-v4-flash` /
+  `deepseek-v4-pro` rates in CNY with a **Beijing-time peak / off-peak split**
+  (peak = 09:00–12:00 and 14:00–18:00, UTC+8, no DST):
+
+  | Model | Off-peak (miss / hit / output) | Peak (miss / hit / output) |
+  |-------|--------------------------------|----------------------------|
+  | `deepseek-v4-flash` | ¥1.5 / ¥0.05 / ¥4.5 per 1M | ¥3.0 / ¥0.10 / ¥9.0 per 1M |
+  | `deepseek-v4-pro`   | ¥4.5 / ¥0.15 / ¥13.5 per 1M | ¥9.0 / ¥0.30 / ¥27.0 per 1M |
+
+  The rate is picked from each event's timestamp; cache-write tokens bill at the
+  cache-miss input rate. Values are stored in USD at the zh UI's fixed 7.2 rate so
+  `cost × 7.2` shows exact CNY.
+- Models not found in any source still count tokens but are labelled **"no price"**;
+  OpenCode's own per-message `cost` field is used as a fallback for unrecognised
+  models.
+- Cost is an **estimate** based on public prices — treat it as "equivalent spend
+  value".
 
 ### Key processing
 
 - One **assistant message** = one event; per-message timestamps give accurate hourly
-  charts, while session-level metadata (agent, project, title) comes from the `session`
-  / `project` tables
-- Token split: `input` (uncached) / `cache` (creation + read) / `output` / `reasoning`;
+  charts, while session-level metadata (agent, project, title) comes from the
+  `session` / `project` tables
+- Token split: `input` (uncached) / `cache` (write + read) / `output` / `reasoning`;
   the UI folds cache into "In" and shows a separate "cached %"
-- Price matching: exact model name → normalized name (strip vendor prefix + `.`↔`p`,
-  e.g. `glm-5.1`⇄`glm-5p1`); models.dev's official bare-name price wins
-- Cost is priced per token type; each model carries a `priced` flag — **models not found
-  in any source still count tokens but are labelled "no price"**. OpenCode's own
-  per-message `cost` field is used as a fallback for unrecognised models
-- Tool classification: `{server}_{tool}` names whose prefix is in your OpenCode config
-  → MCP; the `skill` tool's `state.input.name` matching your skills directory → Skill;
-  built-in tools (`read`, `write`, `edit`, `bash`, `grep`, `glob`, `task`, `todowrite`,
-  `question`, `webfetch`, …) are ignored
+- Codex: per-turn tokens come from `token_count` (the session-level
+  `total_token_usage` is cumulative → deltas); `input_tokens` already includes
+  `cached_input_tokens`, so uncached input = input − cached
+- DeepSeek Harness: `usage` maps directly (its `inputTokens` is already uncached —
+  no subtraction), plus `cr` / `cc` / `reasoning` fields
+- Tool classification: `{server}_{tool}` names whose prefix is in your OpenCode
+  config → MCP; the `skill` tool's `state.input.name` matching your skills directory
+  → Skill; built-in tools (`read`, `write`, `edit`, `bash`, `grep`, `glob`, `task`,
+  `todowrite`, `question`, `webfetch`, …) are ignored
 
-> Cost is an **estimate** based on public prices; treat it as "equivalent spend value".
-
-### Token types & cost formula
+#### Token types & cost formula
 
 Every assistant message's `tokens` object reports mutually exclusive counts:
 
@@ -75,7 +111,7 @@ Every assistant message's `tokens` object reports mutually exclusive counts:
 ```
 total = input + cache.write + cache.read + output + reasoning
 
-cost  = input      × p.input
+cost  = input       × p.input
       + cache.write × p.cache_create
       + cache.read  × p.cache_read    # cache hits billed at the discounted read rate
       + output      × p.output
@@ -89,8 +125,8 @@ modest cost.
 ## Install
 
 Download the latest release from
-[GitHub Releases](https://github.com/Cherno76/ocscale/releases) (`.dmg` on macOS, NSIS
-`.exe` on Windows), or build from source (below).
+[GitHub Releases](https://github.com/Cherno76/ocscale/releases) (`.dmg` on macOS,
+NSIS `.exe` on Windows), or build from source (below).
 
 Because builds are **unsigned / unnotarized**:
 
@@ -98,8 +134,8 @@ Because builds are **unsigned / unnotarized**:
   confirm, or run `xattr -cr /Applications/OCScale.app` once
 - **Windows**: SmartScreen warns on first run — click **More info → Run anyway**
 
-The app installs per-user, registers launch-at-login, and starts in the menu bar / tray
-(no Dock icon, no window at launch).
+The app installs per-user, registers launch-at-login, and starts in the menu bar /
+tray (no Dock icon, no window at launch).
 
 ## Develop
 
@@ -117,7 +153,7 @@ pnpm dev               # http://localhost:1420
 cd src-tauri && cargo run --example dump > ../public/dev-dashboard.json
 ```
 
-Rust unit tests (milestone logic):
+Rust unit tests:
 
 ```bash
 cargo test -p ocscale
@@ -130,9 +166,7 @@ pnpm tauri build       # .app / .dmg on macOS, .exe (NSIS) on Windows
 ```
 
 Artifacts land in `src-tauri/target/release/bundle/`. CI builds on `git push --tags`
-with a `v*` tag; the macOS leg also updates the Homebrew Cask tap. See `AGENTS.md` for
-the versioning rules (every code change bumps PATCH; the three version files stay in
-sync).
+with a `v*` tag; the macOS leg also updates the Homebrew Cask tap.
 
 ## Structure
 
@@ -162,3 +196,7 @@ src-tauri/src/        Rust app backend
 
 Notable bugs found during development — symptom, root cause, and fix — are
 collected in [docs/BUGFIXES.md](docs/BUGFIXES.md).
+
+## License
+
+[MIT](LICENSE) © 2026 HduSy, Cherno76
