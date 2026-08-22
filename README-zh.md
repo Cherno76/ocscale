@@ -49,21 +49,25 @@
 | DeepSeek Harness 消息（Token / MCP） | `~/.dsh/sessions/**/session.jsonl[.zstd]`（或 `$DSH_HOME/sessions`），zstd 解压 |
 | 用户 MCP 白名单 | `~/.config/opencode/opencode.json` → `mcp` 对象键 |
 | 用户 Skill 白名单 | `~/.config/opencode/skills/` 目录 |
-| 模型价格 | **主**：[models.dev](https://models.dev/api.json) → **兜底**：[LiteLLM](https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json) → 内置快照。缓存于 `~/Library/Caches/ocscale/`（平台 cache 目录），每 24h 刷新，离线回退 |
+| 模型价格 | **主**：[models.dev](https://models.dev/api.json) → **兜底**：[LiteLLM](https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json) → 内置快照 + 外部定价文件。缓存于 `~/Library/Caches/ocscale/`（平台 cache 目录），每 24h 刷新，离线回退 |
 | DeepSeek 余额 | `GET https://api.deepseek.com/user/balance` —— Key 在面板输入，缓存 5 分钟 |
 
 ### 价格
 
 - 价格按精确模型名匹配，再做归一化（去厂商前缀 + `.`↔`p`，如 `glm-5.1`⇄`glm-5p1`）；
   官方裸名价格优先
-- **内置 DeepSeek 覆盖价**（`pricing.rs`）：官方 `deepseek-v4-flash` /
-  `deepseek-v4-pro` 人民币单价，按**北京时间峰谷分时**（高峰 = 09:00–12:00 与
-  14:00–18:00，UTC+8，无夏令时）：
+- **外部定价文件**（`pricing.rs` 不再写死价格）：官方 DeepSeek 单价与少量美元
+  兜底模型都在用户可编辑的 `data_dir/ocscale/pricing.json`（macOS：
+  `~/Library/Application Support/ocscale/pricing.json`），首次运行自动从
+  `core/snapshots/pricing.json` 复制默认文件；**以后价格有变化只需改这个文件，
+  无需重新构建**。文件内含**北京时间峰谷分时**（高峰 = 09:00–12:00 与
+  14:00–18:00，UTC+8，无夏令时）与周末规则（2026-08-23 起周末全天按低谷价）：
 
   | 模型 | 低谷（未命中 / 命中 / 输出） | 高峰（未命中 / 命中 / 输出） |
   |------|------------------------------|------------------------------|
   | `deepseek-v4-flash` | ¥1.5 / ¥0.05 / ¥4.5 每 1M | ¥3.0 / ¥0.10 / ¥9.0 每 1M |
   | `deepseek-v4-pro`   | ¥4.5 / ¥0.15 / ¥13.5 每 1M | ¥9.0 / ¥0.30 / ¥27.0 每 1M |
+  | `deepseek-v4-flash-vision-exp` | ¥1.5 / ¥0.05 / ¥4.5 每 1M | ¥3.0 / ¥0.10 / ¥9.0 每 1M |
 
   按每条事件的时戳取对应单价；缓存写入按未命中 input 单价计费。数值按中文界面
   固定 7.2 汇率折算为 USD 存储，`cost × 7.2` 即精确人民币。

@@ -54,21 +54,27 @@ The app only ever **reads** local data — it never writes to or modifies it.
 | DeepSeek Harness messages (tokens / MCP) | `~/.dsh/sessions/**/session.jsonl[.zstd]` (or `$DSH_HOME/sessions`), zstd-decompressed |
 | User MCP whitelist | `~/.config/opencode/opencode.json` → `mcp` object keys |
 | User Skill whitelist | `~/.config/opencode/skills/` directory |
-| Model prices | **Primary**: [models.dev](https://models.dev/api.json) → **Fallback**: [LiteLLM](https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json) → built-in snapshot. Cached in `~/Library/Caches/ocscale/` (platform cache dir), refreshed every 24h, offline fallback |
+| Model prices | **Primary**: [models.dev](https://models.dev/api.json) → **Fallback**: [LiteLLM](https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json) → bundled snapshot + external pricing file. Cached in `~/Library/Caches/ocscale/` (platform cache dir), refreshed every 24h, offline fallback |
 | DeepSeek balance | `GET https://api.deepseek.com/user/balance` — key entered in the panel, cached 5 min |
 
 ### Pricing
 
 - Prices are matched by exact model name, then a normalized name (strip vendor
   prefix + `.`↔`p`, e.g. `glm-5.1`⇄`glm-5p1`); the official bare-name price wins
-- **Built-in DeepSeek override** (in `pricing.rs`): official `deepseek-v4-flash` /
-  `deepseek-v4-pro` rates in CNY with a **Beijing-time peak / off-peak split**
-  (peak = 09:00–12:00 and 14:00–18:00, UTC+8, no DST):
+- **External pricing file** (nothing hardcoded in `pricing.rs`): official
+  DeepSeek rates and a small USD backstop live in the user-editable
+  `data_dir/ocscale/pricing.json` (macOS: `~/Library/Application
+  Support/ocscale/pricing.json`), copied from `core/snapshots/pricing.json` on
+  first run — **price changes only require editing that file, no rebuild**. It
+  encodes the **Beijing-time peak / off-peak split** (peak = 09:00–12:00 and
+  14:00–18:00, UTC+8, no DST) and the weekend rule (weekends bill at the
+  off-peak rate all day from 2026-08-23):
 
   | Model | Off-peak (miss / hit / output) | Peak (miss / hit / output) |
   |-------|--------------------------------|----------------------------|
   | `deepseek-v4-flash` | ¥1.5 / ¥0.05 / ¥4.5 per 1M | ¥3.0 / ¥0.10 / ¥9.0 per 1M |
   | `deepseek-v4-pro`   | ¥4.5 / ¥0.15 / ¥13.5 per 1M | ¥9.0 / ¥0.30 / ¥27.0 per 1M |
+  | `deepseek-v4-flash-vision-exp` | ¥1.5 / ¥0.05 / ¥4.5 per 1M | ¥3.0 / ¥0.10 / ¥9.0 per 1M |
 
   The rate is picked from each event's timestamp; cache-write tokens bill at the
   cache-miss input rate. Values are stored in USD at the zh UI's fixed 7.2 rate so
